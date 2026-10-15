@@ -26,13 +26,13 @@ jobs:
           pip install -r requirements.txt "pyinstaller>=6.10"
 
       - name: Birim testleri
-        run: python -m unittest tests.test_units -v
+        run: python tools/run_tests.py tests.test_units
 
       - name: Uçtan uca testler (gerçek Microsoft Edge + sahte Douyin)
         env:
           DOUYIN_INDIRICI_BROWSER: msedge
           TEST_VERBOSE: "1"
-        run: python -m unittest tests.test_integration -v
+        run: python tools/run_tests.py tests.test_integration
 
       - name: EXE derle
         run: >

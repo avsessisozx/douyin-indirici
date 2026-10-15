@@ -24,7 +24,7 @@ class IntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.fake = FakeDouyin().start()
-        cls.tmp = tempfile.TemporaryDirectory()
+        cls.tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         os.environ["DOUYIN_INDIRICI_BASE"] = cls.fake.base
         os.environ["DOUYIN_INDIRICI_DATA"] = str(Path(cls.tmp.name) / "data")
         os.environ.setdefault("DOUYIN_INDIRICI_BROWSER", "chromium")
