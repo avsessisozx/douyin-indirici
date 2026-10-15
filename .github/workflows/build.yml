@@ -1,0 +1,71 @@
+name: Windows EXE derle
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Bağımlılıkları kur
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt "pyinstaller>=6.10"
+
+      - name: Birim testleri
+        run: python -m unittest tests.test_units -v
+
+      - name: Uçtan uca testler (gerçek Microsoft Edge + sahte Douyin)
+        env:
+          DOUYIN_INDIRICI_BROWSER: msedge
+          TEST_VERBOSE: "1"
+        run: python -m unittest tests.test_integration -v
+
+      - name: EXE derle
+        run: >
+          pyinstaller --noconfirm --clean --onefile --windowed
+          --name DouyinIndirici
+          --icon assets/icon.ico
+          --add-data "douyin_indirici/ui;douyin_indirici/ui"
+          --collect-all playwright
+          main.py
+
+      - name: EXE'yi dene (arayüz + Edge açılıyor mu)
+        shell: pwsh
+        run: |
+          $env:DOUYIN_INDIRICI_SELFTEST_OUT = "$PWD\selftest.txt"
+          $p = Start-Process -FilePath "dist\DouyinIndirici.exe" -ArgumentList "--self-test" -PassThru
+          if (-not $p.WaitForExit(180000)) { $p.Kill(); throw "EXE self-test zaman aşımı" }
+          Get-Content selftest.txt
+          if ((Get-Content selftest.txt -Raw).Trim() -ne "OK") { throw "EXE self-test başarısız" }
+          (Get-Item dist\DouyinIndirici.exe).Length / 1MB
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DouyinIndirici
+          path: dist/DouyinIndirici.exe
+
+      - name: Sürüm yayınla
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/DouyinIndirici.exe
+          body: |
+            **İndir:** aşağıdaki `DouyinIndirici.exe` dosyası. Kurulum gerekmez, çift tıklayıp aç.
+
+            İlk açılışta Windows "Bilgisayarınız korundu" uyarısı verebilir: **Ek bilgi → Yine de çalıştır**.
+            (Program imzalı olmadığı için bu uyarı çıkar.)

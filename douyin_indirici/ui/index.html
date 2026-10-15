@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Douyin İndirici</title>
+<style>
+:root {
+  --bg: #e9edf2;
+  --surface: #ffffff;
+  --ink: #182033;
+  --muted: #5a6478;
+  --line: #d3dae4;
+  --accent: #b3122b;
+  --accent-ink: #ffffff;
+  --accent-soft: #fbe9ec;
+  --ok: #0e7a5f;
+  --ok-soft: #e2f4ee;
+  --warn: #8a5800;
+  --warn-soft: #fff1cc;
+  --err: #b3122b;
+  --focus: #2f6fed;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12161e; --surface: #1b212c; --ink: #e6eaf1; --muted: #98a2b5; --line: #2c3443;
+    --accent: #ff5468; --accent-ink: #1a0509; --accent-soft: #3a1820;
+    --ok: #3dcb9b; --ok-soft: #12302a; --warn: #ffcf66; --warn-soft: #3a2f12; --err: #ff6b7d;
+    --focus: #7aa7ff;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+main { max-width: 700px; margin: 0 auto; padding: 28px 18px 40px; }
+h1 { font: 650 26px/1.2 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; margin: 0; letter-spacing: -0.01em; }
+.lead { color: var(--muted); margin: 4px 0 22px; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; margin-bottom: 14px; }
+.step { display: grid; grid-template-columns: 30px 1fr; gap: 0 12px; }
+.step > div { min-width: 0; }
+.step-num { width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid var(--line); display: grid; place-items: center; font-weight: 650; font-size: 14px; color: var(--muted); }
+.step.done .step-num { border-color: var(--ok); color: var(--ok); }
+.step h2 { font-size: 16px; font-weight: 650; margin: 2px 0 10px; }
+
+/* Link alanı: programın kalbi */
+.link-row { display: flex; gap: 8px; }
+.link-row input {
+  flex: 1; min-width: 0; height: 52px; padding: 0 16px; font-size: 16px;
+  background: var(--bg); border: 1.5px solid var(--line); border-radius: 10px;
+}
+.link-row input:focus { border-color: var(--focus); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 22%, transparent); }
+.detect { min-height: 22px; margin-top: 8px; font-size: 14px; color: var(--muted); }
+.detect.ok { color: var(--ok); }
+.detect.err { color: var(--err); }
+
+.btn {
+  height: 40px; padding: 0 16px; border-radius: 9px; border: 1.5px solid var(--line);
+  background: var(--surface); cursor: pointer; font-weight: 600; white-space: nowrap;
+}
+.btn:hover { border-color: var(--muted); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.link-row .btn { height: 52px; }
+
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.choice { position: relative; }
+.choice input { position: absolute; opacity: 0; pointer-events: none; }
+.choice label {
+  display: block; height: 100%; padding: 12px 14px; border: 1.5px solid var(--line); border-radius: 10px; cursor: pointer;
+}
+.choice label b { display: block; font-weight: 650; }
+.choice label span { display: block; color: var(--muted); font-size: 13.5px; margin-top: 2px; }
+.choice input:checked + label { border-color: var(--accent); background: var(--accent-soft); }
+.choice input:focus-visible + label { outline: 2px solid var(--focus); outline-offset: 2px; }
+.choice input:disabled + label { opacity: .45; cursor: not-allowed; }
+
+.rows { display: grid; gap: 12px; }
+.row { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 10px; }
+.row > .lbl { color: var(--muted); font-size: 14px; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1.5px solid var(--line); border-radius: 9px; overflow: hidden; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { padding: 7px 13px; cursor: pointer; font-size: 14px; border-right: 1px solid var(--line); }
+.seg label:last-of-type { border-right: 0; }
+.seg input:checked + label { background: var(--ink); color: var(--surface); }
+.seg input:focus-visible + label { outline: 2px solid var(--focus); outline-offset: -2px; }
+select { height: 38px; padding: 0 10px; border-radius: 9px; border: 1.5px solid var(--line); background: var(--surface); }
+.check { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.check input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--accent); }
+.check small { display: block; color: var(--muted); font-size: 13px; }
+.folder-row { display: flex; gap: 8px; }
+.folder-row input { flex: 1; min-width: 0; height: 40px; padding: 0 12px; border-radius: 9px; border: 1.5px solid var(--line); background: var(--bg); font-size: 14px; }
+
+.start {
+  width: 100%; height: 56px; border-radius: 12px; border: 0; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink); font-size: 17px; font-weight: 650;
+}
+.start:hover { filter: brightness(1.06); }
+.start.stop { background: var(--ink); color: var(--surface); }
+.start:disabled { opacity: .5; cursor: not-allowed; }
+.form-error { color: var(--err); font-size: 14px; margin: 8px 2px 0; min-height: 20px; }
+
+/* İlerleme */
+#progress[hidden] { display: none; }
+.status { font-size: 17px; font-weight: 650; margin: 0 0 4px; }
+.sub { color: var(--muted); font-size: 14px; margin: 0 0 12px; overflow-wrap: anywhere; }
+.bar { height: 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s ease; }
+.bar.indet > i { width: 30%; animation: slide 1.2s ease-in-out infinite; }
+@keyframes slide { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .bar.indet > i { animation: none; width: 100%; opacity: .35; } .bar > i { transition: none; } }
+.counts { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 12px; font-size: 14px; color: var(--muted); }
+.counts b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.note { border-radius: 10px; padding: 12px 14px; margin-top: 12px; font-size: 14.5px; }
+.note.warn { background: var(--warn-soft); color: var(--warn); }
+.note.ok { background: var(--ok-soft); color: var(--ok); }
+.note.err { background: var(--accent-soft); color: var(--err); }
+.note .btn { margin-top: 10px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+details { margin-top: 14px; }
+summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+.log { margin-top: 8px; max-height: 240px; overflow: auto; font-size: 13px; line-height: 1.45; border-top: 1px solid var(--line); padding-top: 8px; }
+.log div { padding: 2px 0; overflow-wrap: anywhere; }
+.log time { color: var(--muted); margin-right: 8px; font-variant-numeric: tabular-nums; }
+.log .error { color: var(--err); }
+.log .warn { color: var(--warn); }
+.log .ok { color: var(--ok); }
+.log .debug { display: none; }
+
+.foot { color: var(--muted); font-size: 13.5px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+.linklike { background: none; border: 0; padding: 0; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; font-size: 13.5px; }
+.linklike:disabled { opacity: .5; cursor: not-allowed; }
+
+@media (max-width: 560px) {
+  .choices { grid-template-columns: 1fr; }
+  .row { grid-template-columns: 1fr; gap: 6px; }
+  .link-row { flex-direction: column; }
+  .link-row input { flex: none; }
+  .link-row .btn { height: 44px; }
+  .folder-row { flex-wrap: wrap; }
+  .folder-row input { flex-basis: 100%; }
+}
+</style>
+</head>
+<body>
+<main>
+  <h1>Douyin İndirici</h1>
+  <p class="lead">Douyin'deki videoları ve resimleri bilgisayarına indirir. Hesap gerekmez.</p>
+
+  <section class="panel step" id="step1">
+    <div class="step-num">1</div>
+    <div>
+      <h2>Linki yapıştır</h2>
+      <div class="link-row">
+        <input id="link" type="text" autocomplete="off" spellcheck="false"
+               placeholder="https://www.douyin.com/user/… ya da /video/…" aria-describedby="detect">
+        <button class="btn" id="paste" type="button">Yapıştır</button>
+      </div>
+      <div class="detect" id="detect" aria-live="polite">Profil linki ya da tek video/gönderi linki olabilir. Uygulamadan kopyalanan paylaşım metni de olur.</div>
+    </div>
+  </section>
+
+  <section class="panel step" id="step2">
+    <div class="step-num">2</div>
+    <div>
+      <h2>Ne indirilsin?</h2>
+      <div class="choices" role="radiogroup" aria-label="Ne indirilsin">
+        <div class="choice">
+          <input type="radio" name="mode" id="mode-single" value="single">
+          <label for="mode-single"><b>Sadece bu gönderi</b><span>Tek video ya da tek resim albümü</span></label>
+        </div>
+        <div class="choice">
+          <input type="radio" name="mode" id="mode-profile" value="profile">
+          <label for="mode-profile"><b>Profilin tamamı</b><span id="profile-hint">Bu kişinin bütün gönderileri, toplu olarak</span></label>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel step" id="step3">
+    <div class="step-num">3</div>
+    <div>
+      <h2>Ayarlar</h2>
+      <div class="rows">
+        <div class="row" id="row-content">
+          <span class="lbl" id="lbl-content">İçerik</span>
+          <div class="seg" role="radiogroup" aria-labelledby="lbl-content">
+            <input type="radio" name="content" id="c-all" value="all"><label for="c-all">Video ve resim</label>
+            <input type="radio" name="content" id="c-video" value="video"><label for="c-video">Sadece video</label>
+            <input type="radio" name="content" id="c-image" value="image"><label for="c-image">Sadece resim</label>
+          </div>
+        </div>
+        <div class="row" id="row-limit">
+          <label class="lbl" for="limit">Kaç gönderi</label>
+          <div>
+            <select id="limit">
+              <option value="0">Hepsi</option>
+              <option value="10">En yeni 10</option>
+              <option value="20">En yeni 20</option>
+              <option value="50">En yeni 50</option>
+              <option value="100">En yeni 100</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <label class="lbl" for="quality">Video kalitesi</label>
+          <div>
+            <select id="quality">
+              <option value="highest">En yüksek</option>
+              <option value="1080p">1080p</option>
+              <option value="720p">720p</option>
+              <option value="540p">540p</option>
+              <option value="lowest">En düşük (az yer kaplar)</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <span class="lbl"></span>
+          <label class="check"><input type="checkbox" id="compat">
+            <span>Her oynatıcıda açılsın
+              <small>Videoları H.264 biçiminde indirir. Kapatırsan bazı videolar daha küçük iner ama Windows'ta açmak için ek bileşen gerekebilir.</small>
+            </span>
+          </label>
+        </div>
+        <div class="row">
+          <label class="lbl" for="outdir">Kayıt klasörü</label>
+          <div class="folder-row">
+            <input id="outdir" type="text" spellcheck="false">
+            <button class="btn" id="choose" type="button">Değiştir</button>
+            <button class="btn" id="openout" type="button">Aç</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <button class="start" id="start" type="button">İndirmeyi başlat</button>
+  <div class="form-error" id="form-error" role="alert"></div>
+
+  <section class="panel" id="progress" hidden aria-live="polite">
+    <p class="status" id="status">Hazırlanıyor…</p>
+    <p class="sub" id="sub"></p>
+    <div class="bar" id="bar"><i></i></div>
+    <div class="counts" id="counts"></div>
+    <div id="notes"></div>
+    <div class="actions" id="done-actions" hidden>
+      <button class="btn" id="open-result" type="button">İndirilenleri aç</button>
+    </div>
+    <details id="details">
+      <summary>Ayrıntılar</summary>
+      <div class="log" id="log"></div>
+    </details>
+  </section>
+
+  <div class="foot">
+    <button class="linklike" id="login" type="button">Douyin'e giriş yap (isteğe bağlı)</button>
+    <span id="version"></span>
+  </div>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const api = async (path, body) => {
+    const res = await fetch(path, body === undefined ? {} : {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'İstek başarısız oldu.');
+    return data;
+  };
+
+  let linkKind = null, hasOwner = false, running = false, logNext = 0, lastFolder = '';
+  let settingsLoaded = false, parseTimer = null, parseSeq = 0, lastPhase = '';
+
+  // ---------------- link algılama
+  const detect = $('detect');
+  function setModeAvailability() {
+    const single = $('mode-single'), profile = $('mode-profile');
+    single.disabled = linkKind === 'profile';
+    profile.disabled = false;
+    $('profile-hint').textContent = (linkKind === 'post')
+      ? 'Bu gönderiyi paylaşan kişinin bütün gönderileri'
+      : 'Bu kişinin bütün gönderileri, toplu olarak';
+    if (linkKind === 'profile') profile.checked = true;
+    else if ((linkKind === 'post' || linkKind === 'short') && !single.checked && !profile.checked) single.checked = true;
+    if (single.disabled && single.checked) profile.checked = true;
+    updateModeRows();
+  }
+  function updateModeRows() {
+    const isProfile = $('mode-profile').checked;
+    $('row-content').hidden = !isProfile;
+    $('row-limit').hidden = !isProfile;
+    $('step2').classList.toggle('done', $('mode-single').checked || isProfile);
+  }
+  async function parseLink() {
+    const value = $('link').value.trim();
+    const seq = ++parseSeq;
+    if (!value) {
+      linkKind = null;
+      detect.className = 'detect';
+      detect.textContent = 'Profil linki ya da tek video/gönderi linki olabilir. Uygulamadan kopyalanan paylaşım metni de olur.';
+      $('step1').classList.remove('done');
+      return;
+    }
+    try {
+      const r = await api('/api/parse', { link: value });
+      if (seq !== parseSeq) return;
+      linkKind = r.ok ? r.kind : null;
+      hasOwner = r.has_owner;
+      detect.className = 'detect ' + (r.ok ? 'ok' : 'err');
+      detect.textContent = r.message;
+      $('step1').classList.toggle('done', !!r.ok);
+      setModeAvailability();
+    } catch (e) {
+      detect.className = 'detect err';
+      detect.textContent = e.message;
+    }
+  }
+  $('link').addEventListener('input', () => { clearTimeout(parseTimer); parseTimer = setTimeout(parseLink, 200); });
+  $('link').addEventListener('keydown', (e) => { if (e.key === 'Enter') startOrStop(); });
+  $('paste').addEventListener('click', async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) { $('link').value = text.trim(); parseLink(); return; }
+    } catch (e) { /* izin yoksa elle yapıştırma */ }
+    $('link').focus();
+    detect.className = 'detect';
+    detect.textContent = 'Kutuya tıklayıp Ctrl+V ile yapıştır.';
+  });
+  document.querySelectorAll('input[name=mode]').forEach(el => el.addEventListener('change', updateModeRows));
+
+  // ---------------- ayarlar
+  function readSettings() {
+    const content = document.querySelector('input[name=content]:checked');
+    return {
+      content: content ? content.value : 'all',
+      limit: parseInt($('limit').value, 10) || 0,
+      quality: $('quality').value,
+      compat: $('compat').checked,
+      out_dir: $('outdir').value.trim(),
+    };
+  }
+  function applySettings(s) {
+    const c = document.querySelector(`input[name=content][value="${s.content}"]`);
+    if (c) c.checked = true;
+    $('limit').value = String(s.limit);
+    if (!$('limit').value) $('limit').value = '0';
+    $('quality').value = s.quality;
+    $('compat').checked = !!s.compat;
+    if (document.activeElement !== $('outdir')) $('outdir').value = s.out_dir;
+  }
+  const saveSettings = () => api('/api/settings', readSettings()).then(r => applySettings(r.settings)).catch(() => {});
+  ['limit', 'quality', 'compat', 'outdir'].forEach(id => $(id).addEventListener('change', saveSettings));
+  document.querySelectorAll('input[name=content]').forEach(el => el.addEventListener('change', saveSettings));
+
+  $('choose').addEventListener('click', async () => {
+    $('choose').disabled = true;
+    try { const r = await api('/api/choose-folder', {}); applySettings(r.settings); }
+    catch (e) { $('form-error').textContent = e.message; }
+    finally { $('choose').disabled = running; }
+  });
+  $('openout').addEventListener('click', () => api('/api/open-folder', { path: $('outdir').value.trim() }).catch(e => { $('form-error').textContent = e.message; }));
+  $('open-result').addEventListener('click', () => api('/api/open-folder', { path: lastFolder || $('outdir').value.trim() }).catch(() => {}));
+
+  // ---------------- başlat / durdur
+  async function startOrStop() {
+    $('form-error').textContent = '';
+    if (running) { api('/api/stop', {}).catch(() => {}); return; }
+    if (!$('link').value.trim()) { $('form-error').textContent = 'Önce bir Douyin linki yapıştır.'; $('link').focus(); return; }
+    await parseLink();
+    if (!linkKind) { $('form-error').textContent = detect.textContent; $('link').focus(); return; }
+    const mode = document.querySelector('input[name=mode]:checked');
+    if (!mode) { $('form-error').textContent = 'Ne indirileceğini seç: sadece bu gönderi mi, profilin tamamı mı?'; return; }
+    try {
+      $('start').disabled = true;
+      await api('/api/start', { link: $('link').value.trim(), mode: mode.value, settings: readSettings() });
+      $('log').textContent = '';
+      $('progress').hidden = false;
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      $('progress').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+      poll(true);
+    } catch (e) {
+      $('form-error').textContent = e.message;
+    } finally {
+      $('start').disabled = false;
+    }
+  }
+  $('start').addEventListener('click', startOrStop);
+  $('login').addEventListener('click', async () => {
+    $('form-error').textContent = '';
+    try { await api('/api/login', {}); $('progress').hidden = false; poll(true); }
+    catch (e) { $('form-error').textContent = e.message; }
+  });
+
+  // ---------------- durum
+  const fmtMB = (b) => (b / 1048576).toFixed(b > 104857600 ? 0 : 1) + ' MB';
+  function note(kind, html) { const d = document.createElement('div'); d.className = 'note ' + kind; d.innerHTML = html; return d; }
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+  function render(s) {
+    running = s.running;
+    $('start').textContent = running ? 'Durdur' : 'İndirmeyi başlat';
+    $('start').classList.toggle('stop', running);
+    ['link', 'paste', 'choose', 'outdir', 'login'].forEach(id => { $(id).disabled = running; });
+    document.querySelectorAll('#step2 input, #step3 input, #step3 select').forEach(el => {
+      el.disabled = running || (el.id === 'mode-single' && linkKind === 'profile');
+    });
+    if (s.version) $('version').textContent = 'Sürüm ' + s.version;
+    if (s.settings && !settingsLoaded) { applySettings(s.settings); settingsLoaded = true; }
+
+    if (s.phase === 'idle') return;
+    $('progress').hidden = false;
+    if (s.folder) lastFolder = s.folder;
+
+    const total = s.files_total, finished = s.files_done + s.files_skipped + s.files_failed;
+    let status = '', sub = '', pct = null;
+    const who = s.author ? `${s.author}: ` : '';
+    if (s.mode === 'login') {
+      status = running ? 'Douyin tarayıcıda açık' : 'Tarayıcı kapatıldı';
+      sub = running ? 'Açılan pencerede giriş yapabilirsin. İşin bitince o pencereyi kapat.' : (s.summary || '');
+    } else if (s.phase === 'starting') {
+      status = 'Tarayıcı açılıyor…';
+      sub = 'İlk açılış birkaç saniye sürebilir.';
+    } else if (running) {
+      if (s.collecting) {
+        status = `${who}${s.found_posts} gönderi bulundu, taranıyor…`;
+      } else if (s.phase === 'collecting') {
+        status = 'Gönderi bilgisi alınıyor…';
+      } else {
+        status = `${who}${finished} / ${total} dosya`;
+      }
+      if (total > 0) pct = Math.min(100, finished / total * 100);
+      if (s.current) {
+        sub = `İniyor: ${s.current}` + (s.current_total ? ` (${fmtMB(s.current_bytes)} / ${fmtMB(s.current_total)})` : (s.current_bytes ? ` (${fmtMB(s.current_bytes)})` : ''));
+      } else {
+        sub = s.collecting ? 'Bulunan gönderiler sırayla iniyor. Sayfa kendiliğinden kayıyor.' : '';
+      }
+    } else {
+      status = s.phase === 'done' ? 'İndirme tamamlandı' : s.phase === 'stopped' ? 'Durduruldu' : 'İndirme tamamlanamadı';
+      sub = s.summary || '';
+      pct = s.phase === 'done' ? 100 : (total ? finished / total * 100 : 0);
+    }
+    $('status').textContent = status;
+    $('sub').textContent = sub;
+    const bar = $('bar');
+    bar.classList.toggle('indet', running && pct === null);
+    bar.firstElementChild.style.width = (pct === null ? 0 : pct) + '%';
+
+    const counts = [];
+    if (s.mode !== 'login') {
+      counts.push(`Bulunan gönderi <b>${s.found_posts}</b>`);
+      counts.push(`İnen dosya <b>${s.files_done}</b>`);
+      if (s.files_skipped) counts.push(`Zaten vardı <b>${s.files_skipped}</b>`);
+      if (s.posts_skipped) counts.push(`Seçime uymadı <b>${s.posts_skipped}</b>`);
+      if (s.files_failed) counts.push(`İnemedi <b>${s.files_failed}</b>`);
+    }
+    $('counts').innerHTML = counts.map(c => `<span>${c}</span>`).join('');
+
+    const notes = $('notes');
+    notes.textContent = '';
+    if (s.captcha) {
+      notes.appendChild(note('warn', '<b>Douyin doğrulama istiyor.</b><br>Açılan tarayıcı penceresindeki bulmacayı ya da kutucuğu tamamla. Program bekliyor ve sonra kendiliğinden devam edecek.'));
+    }
+    if (s.login_wall && !running) {
+      const n = note('warn', 'Douyin, giriş yapılmadan bu profilin sadece bir kısmını gösterdi. Hepsini indirmek istersen bir kez giriş yap, sonra aynı linkle tekrar başlat. Daha önce inenler tekrar inmez.');
+      const b = document.createElement('button'); b.className = 'btn'; b.textContent = "Douyin'e giriş yap";
+      b.onclick = () => $('login').click(); n.appendChild(document.createElement('br')); n.appendChild(b);
+      notes.appendChild(n);
+    }
+    if (!running && s.phase === 'error' && s.summary) notes.appendChild(note('err', escapeHtml(s.summary)));
+
+    $('done-actions').hidden = running || s.mode === 'login' || !(s.files_done || s.files_skipped);
+
+    if (s.logs && s.logs.length) {
+      const log = $('log');
+      const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 10;
+      for (const line of s.logs) {
+        const d = document.createElement('div');
+        d.className = line.level;
+        const t = document.createElement('time'); t.textContent = line.t;
+        d.appendChild(t); d.appendChild(document.createTextNode(line.text));
+        log.appendChild(d);
+      }
+      while (log.childElementCount > 800) log.firstElementChild.remove();
+      if (atBottom) log.scrollTop = log.scrollHeight;
+    }
+    logNext = s.log_next;
+    if (lastPhase !== s.phase && (s.phase === 'error')) $('details').open = true;
+    lastPhase = s.phase;
+  }
+
+  let pollTimer = null;
+  async function poll(immediate) {
+    clearTimeout(pollTimer);
+    try { render(await api('/api/state?since=' + logNext)); } catch (e) { /* sunucu kapandıysa sessiz */ }
+    pollTimer = setTimeout(poll, running ? 600 : 1500);
+  }
+  window.addEventListener('beforeunload', (e) => { if (running) { e.preventDefault(); e.returnValue = ''; } });
+  poll(true);
+  $('link').focus();
+})();
+</script>
+</body>
+</html>
