@@ -16,6 +16,11 @@ def esc(text: str) -> str:
 
 
 def main() -> int:
+    for stream in (sys.stdout, sys.stderr, sys.__stderr__):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
     names = sys.argv[1:] or ["tests.test_units"]
     buf = io.StringIO()
 

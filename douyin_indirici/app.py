@@ -21,6 +21,14 @@ from .server import AppState, start_server
 HEARTBEAT_TIMEOUT = 45
 
 
+def say(text: str) -> None:
+    """Konsol yoksa ya da Türkçe karakter yazamıyorsa sessizce geç."""
+    try:
+        print(text, flush=True)
+    except Exception:
+        pass
+
+
 def _instance_file() -> Path:
     return app_data_dir() / "calisan.json"
 
@@ -87,7 +95,7 @@ def self_test() -> int:
 
     name = asyncio.run(check_browser())
     server.shutdown()
-    print(f"SELF-TEST OK: arayüz + tarayıcı ({name})")
+    say(f"SELF-TEST OK: arayüz + tarayıcı ({name})")
     return 0
 
 
@@ -123,7 +131,7 @@ def main(argv=None) -> int:
         _instance_file().write_text(json.dumps({"port": state.port, "pid": os.getpid()}), encoding="utf-8")
     except OSError:
         pass
-    print(f"Douyin İndirici çalışıyor: {url}", flush=True)
+    say(f"Douyin İndirici çalışıyor: {url}")
 
     window = None if args.no_window else open_window(url)
     started = time.monotonic()
