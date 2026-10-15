@@ -49,6 +49,11 @@ jobs:
       - name: EXE'yi dene
         shell: pwsh
         run: |
+          trap {
+            $m = ($_ | Out-String) -replace "%", "%25" -replace "`r", "" -replace "`n", "%0A"
+            Write-Host "::error title=EXE testi::$m"
+            exit 1
+          }
           function Run-Exe([string]$arg, [string]$label) {
             $out = "$PWD\selftest-$label.txt"
             $env:DOUYIN_INDIRICI_SELFTEST_OUT = $out
