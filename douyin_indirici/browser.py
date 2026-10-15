@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import unquote
 
-from . import links
+from . import links, winbrowsers
 from .media import aweme_id_of, find_post_dicts
 
 POST_API = "/aweme/v1/web/aweme/post/"
@@ -88,50 +88,29 @@ class DouyinBrowser:
 
     # ------------------------------------------------------------ açılış
     async def __aenter__(self) -> "DouyinBrowser":
+        winbrowsers.prepare_playwright_env()
         try:
             from playwright.async_api import async_playwright
         except Exception as exc:  # pragma: no cover
             raise BrowserError(f"Tarayıcı bileşeni yüklenemedi: {exc}")
 
         self._pw = await async_playwright().start()
-        profile_dir = self.data_dir / "tarayici"
-        profile_dir.mkdir(parents=True, exist_ok=True)
-        headless = os.environ.get("DOUYIN_INDIRICI_HEADLESS") == "1"
-
-        wanted = os.environ.get("DOUYIN_INDIRICI_BROWSER", "")
-        channels = [wanted] if wanted else ["msedge", "chrome"]
-        errors = []
-        for channel in channels:
-            kwargs: Dict[str, Any] = dict(
-                headless=headless,
-                args=["--disable-blink-features=AutomationControlled", "--no-first-run",
-                      "--no-default-browser-check", "--window-size=1100,860"],
-                ignore_default_args=["--enable-automation"],
-                no_viewport=True,
-                locale="zh-CN",
-                accept_downloads=False,
-            )
-            if channel and channel != "chromium":
-                kwargs["channel"] = channel
-            try:
-                self.context = await self._pw.chromium.launch_persistent_context(str(profile_dir), **kwargs)
-                self.channel_name = {"msedge": "Microsoft Edge", "chrome": "Google Chrome"}.get(channel, "Chromium")
+        errors: List[str] = []
+        for channel in self._channel_order():
+            if self.cancel.is_set():
                 break
-            except Exception as exc:
-                text = str(exc)
-                errors.append(f"{channel}: {text.splitlines()[0] if text else exc}")
-                if "ProcessSingleton" in text or "already in use" in text or "lock" in text.lower():
-                    await self._close_pw()
-                    raise BrowserError(
-                        "Tarayıcı profili şu an başka bir pencerede kullanılıyor. "
-                        "Açık kalmış başka bir Douyin İndirici penceresi varsa kapatıp tekrar dene."
-                    )
+            if await self._try_launch(channel, errors):
+                break
+            if channel == "chromium" and winbrowsers.bundled_chromium_exe() is None:
+                # Kendi tarayıcımız henüz indirilmemiş: indir ve bir kez daha dene.
+                ok = await asyncio.to_thread(winbrowsers.install_bundled_chromium, self.log)
+                if ok and await self._try_launch(channel, errors):
+                    break
         if self.context is None:
             await self._close_pw()
             raise BrowserError(
-                "Bilgisayarında Microsoft Edge ya da Google Chrome bulunamadı veya açılamadı. "
-                "Windows 10'da Edge normalde yüklüdür; Edge'i güncelleyip tekrar dene.\n"
-                + "Ayrıntı: " + " | ".join(errors)
+                "Hiçbir tarayıcı açılamadı. Edge'in kurulumu bozuk olabilir ve yedek tarayıcı da indirilemedi. "
+                "İnternet bağlantını kontrol edip programı yeniden aç.\nAyrıntı: " + " | ".join(errors)
             )
 
         await self.context.add_init_script(
@@ -150,6 +129,57 @@ class DouyinBrowser:
             self.user_agent = ""
         self.log("info", f"{self.channel_name} açıldı. İş bitene kadar bu pencereyi kapatma.")
         return self
+
+    def _channel_order(self) -> List[str]:
+        wanted = os.environ.get("DOUYIN_INDIRICI_BROWSER", "")
+        if wanted:
+            return [wanted]
+        order: List[str] = []
+        if winbrowsers.healthy_edge():
+            order.append("msedge")
+        elif winbrowsers.find_edge():
+            self.log("warn", "Bilgisayardaki Edge'in kurulumu eksik görünüyor (yarım kalmış güncelleme). Başka tarayıcı kullanılacak.")
+        if winbrowsers.healthy_chrome():
+            order.append("chrome")
+        order.append("chromium")
+        return order
+
+    async def _try_launch(self, channel: str, errors: List[str]) -> bool:
+        headless = os.environ.get("DOUYIN_INDIRICI_HEADLESS") == "1"
+        profile_dir = self.data_dir / f"tarayici-{channel or 'chromium'}"
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        kwargs: Dict[str, Any] = dict(
+            headless=headless,
+            args=["--disable-blink-features=AutomationControlled", "--no-first-run",
+                  "--no-default-browser-check", "--window-size=1100,860"],
+            ignore_default_args=["--enable-automation"],
+            no_viewport=True,
+            locale="zh-CN",
+            accept_downloads=False,
+            timeout=60000,
+        )
+        if channel and channel != "chromium":
+            kwargs["channel"] = channel
+        elif not os.environ.get("DOUYIN_INDIRICI_BROWSER"):
+            exe = winbrowsers.bundled_chromium_exe()
+            if not exe:
+                errors.append("chromium: henüz indirilmedi")
+                return False
+            kwargs["executable_path"] = exe
+        try:
+            self.context = await self._pw.chromium.launch_persistent_context(str(profile_dir), **kwargs)
+        except Exception as exc:
+            text = str(exc)
+            errors.append(f"{channel}: {text.splitlines()[0] if text else exc}")
+            if "ProcessSingleton" in text or "already in use" in text:
+                await self._close_pw()
+                raise BrowserError(
+                    "Tarayıcı profili şu an başka bir pencerede kullanılıyor. "
+                    "Açık kalmış başka bir Douyin İndirici penceresi varsa kapatıp tekrar dene."
+                )
+            return False
+        self.channel_name = {"msedge": "Microsoft Edge", "chrome": "Google Chrome"}.get(channel, "Tarayıcı")
+        return True
 
     async def __aexit__(self, *exc) -> None:
         await self.close()

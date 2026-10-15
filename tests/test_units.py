@@ -174,5 +174,27 @@ class MiscTests(unittest.TestCase):
             self.assertIsNone(existing_file(stem, ".mp4"))
 
 
+class BrowserHealthTests(unittest.TestCase):
+    def test_elf_check(self):
+        from douyin_indirici import winbrowsers
+        os.environ["DOUYIN_INDIRICI_CHECK_ELF"] = "1"
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                app = Path(tmp) / "Application"
+                ver = app / "147.0.3912.86"
+                ver.mkdir(parents=True)
+                exe = app / "msedge.exe"
+                exe.write_bytes(b"MZ")
+                self.assertFalse(winbrowsers.browser_healthy(str(exe)), "dll yokken bozuk sayılmalı")
+                (ver / "msedge_elf.dll").write_bytes(b"MZ")
+                self.assertTrue(winbrowsers.browser_healthy(str(exe)))
+                (app / "148.0.1.1").mkdir()
+                self.assertFalse(winbrowsers.browser_healthy(str(exe)), "yarım güncelleme klasörü bozuk sayılmalı")
+                self.assertFalse(winbrowsers.browser_healthy(None))
+                self.assertFalse(winbrowsers.browser_healthy(str(app / "yok.exe")))
+        finally:
+            del os.environ["DOUYIN_INDIRICI_CHECK_ELF"]
+
+
 if __name__ == "__main__":
     unittest.main()

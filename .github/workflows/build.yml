@@ -46,15 +46,47 @@ jobs:
           --collect-all playwright
           main.py
 
-      - name: EXE'yi dene (arayüz + Edge açılıyor mu)
+      - name: EXE'yi dene
         shell: pwsh
         run: |
-          $env:DOUYIN_INDIRICI_SELFTEST_OUT = "$PWD\selftest.txt"
-          $p = Start-Process -FilePath "dist\DouyinIndirici.exe" -ArgumentList "--self-test" -PassThru
-          if (-not $p.WaitForExit(180000)) { $p.Kill(); throw "EXE self-test zaman aşımı" }
-          Get-Content selftest.txt
-          if ((Get-Content selftest.txt -Raw).Trim() -ne "OK") { throw "EXE self-test başarısız" }
-          (Get-Item dist\DouyinIndirici.exe).Length / 1MB
+          function Run-Exe([string]$arg, [string]$label) {
+            $out = "$PWD\selftest-$label.txt"
+            $env:DOUYIN_INDIRICI_SELFTEST_OUT = $out
+            Remove-Item $out -ErrorAction SilentlyContinue
+            $p = Start-Process -FilePath "dist\DouyinIndirici.exe" -ArgumentList $arg -PassThru
+            if (-not $p.WaitForExit(600000)) { $p.Kill(); throw "$label : zaman aşımı" }
+            $r = Get-Content $out -Raw
+            Write-Host "$label => $r"
+            if (-not $r.StartsWith("OK")) { throw "$label başarısız: $r" }
+            return $r.Trim()
+          }
+          "{0:N1} MB" -f ((Get-Item dist\DouyinIndirici.exe).Length / 1MB)
+
+          # 1) Normal bilgisayar: Edge sağlam
+          Run-Exe "--self-test" "normal-tarayici"
+          Run-Exe "--self-test-window" "normal-pencere"
+
+          # 2) Edge de Chrome da yok sayılırsa: program kendi tarayıcısını indirip kullanmalı
+          $env:DOUYIN_INDIRICI_FORCE_BUNDLED = "1"
+          $env:DOUYIN_INDIRICI_DATA = "$env:RUNNER_TEMP\di-bundled"
+          $r = Run-Exe "--self-test-window" "indirilen-pencere"
+          if ($r -ne "OK chromium") { throw "indirilen tarayıcı kullanılmadı: $r" }
+          Run-Exe "--self-test" "indirilen-tarayici"
+          Remove-Item Env:DOUYIN_INDIRICI_FORCE_BUNDLED
+          Remove-Item Env:DOUYIN_INDIRICI_DATA
+
+          # 3) Kullanıcıda görülen hata: Edge güncellemesi yarım kalmış (msedge_elf.dll eksik)
+          Stop-Process -Name msedge -Force -ErrorAction SilentlyContinue
+          Start-Sleep 3
+          $broken = 0
+          Get-ChildItem "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\*\msedge_elf.dll", "$env:ProgramFiles\Microsoft\Edge\Application\*\msedge_elf.dll" -ErrorAction SilentlyContinue | ForEach-Object {
+            Rename-Item $_.FullName "msedge_elf.dll.bozuk"; $broken++
+          }
+          if ($broken -eq 0) { throw "Edge bozulamadı (test kurulumu)" }
+          $r = Run-Exe "--self-test-window" "bozuk-edge-pencere"
+          if ($r -eq "OK edge") { throw "bozuk Edge kullanılmaya çalışıldı" }
+          $r = Run-Exe "--self-test" "bozuk-edge-tarayici"
+          if ($r -match "Edge") { throw "bozuk Edge ile tarayıcı açılmaya çalışıldı: $r" }
 
       - uses: actions/upload-artifact@v4
         with:

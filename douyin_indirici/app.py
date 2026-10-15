@@ -5,20 +5,22 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
+import threading
 import subprocess
 import sys
 import time
 import urllib.request
 import webbrowser
 from pathlib import Path
-from typing import Optional
+from typing import Callable, List, Optional, Tuple
 
 from . import __version__
+from . import winbrowsers
 from .paths import app_data_dir
 from .server import AppState, start_server
 
 HEARTBEAT_TIMEOUT = 45
+WINDOW_WAIT = 20
 
 
 def say(text: str) -> None:
@@ -44,37 +46,84 @@ def _existing_instance() -> Optional[int]:
     return None
 
 
-def find_edge() -> Optional[str]:
-    if sys.platform != "win32":
+def _app_window(exe: str, url: str, name: str) -> Optional[subprocess.Popen]:
+    profile = app_data_dir() / f"arayuz-penceresi-{name}"
+    cmd = [exe, f"--app={url}", f"--user-data-dir={profile}", "--window-size=1000,900",
+           "--no-first-run", "--no-default-browser-check", "--disable-features=Translate"]
+    if sys.platform.startswith("linux") and hasattr(os, "geteuid") and os.geteuid() == 0:
+        cmd.append("--no-sandbox")  # sadece geliştirme ortamı (Linux, root)
+    try:
+        return subprocess.Popen(cmd)
+    except OSError:
         return None
-    candidates = []
-    for env in ("PROGRAMFILES(X86)", "PROGRAMFILES", "LOCALAPPDATA"):
-        base = os.environ.get(env)
-        if base:
-            candidates.append(Path(base) / "Microsoft" / "Edge" / "Application" / "msedge.exe")
-    for path in candidates:
-        if path.is_file():
-            return str(path)
-    return shutil.which("msedge")
+
+
+def _message_box(text: str) -> None:
+    """Pencere açılamazken kullanıcıyı bilgilendirmek için Windows bilgi kutusu."""
+    if sys.platform != "win32":
+        say(text)
+        return
+
+    def show() -> None:
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(0, text, "Douyin İndirici", 0x40 | 0x40000)
+        except Exception:
+            pass
+
+    threading.Thread(target=show, daemon=True).start()
+
+
+def window_launchers(url: str) -> List[Tuple[str, Callable[[], Tuple[bool, Optional[subprocess.Popen]]]]]:
+    """Arayüz penceresini açmanın yolları, en iyiden en son çareye."""
+
+    def with_exe(finder: Callable[[], Optional[str]], name: str):
+        def launch():
+            exe = finder()
+            if not exe:
+                return False, None
+            proc = _app_window(exe, url, name)
+            return proc is not None, proc
+        return launch
+
+    def default_browser():
+        if os.environ.get("DOUYIN_INDIRICI_FORCE_BUNDLED"):
+            return False, None
+        try:
+            return bool(webbrowser.open(url)), None
+        except Exception:
+            return False, None
+
+    def download_then_open():
+        _message_box(
+            "Bilgisayarındaki Edge'in kurulumu bozuk görünüyor (yarım kalmış güncelleme olabilir).\n\n"
+            "Program kendi tarayıcısını indiriyor (yaklaşık 150 MB, sadece bu sefer). "
+            "Birkaç dakika içinde pencere kendiliğinden açılacak."
+        )
+        if not winbrowsers.install_bundled_chromium(lambda level, text: say(text)):
+            _message_box("Tarayıcı bileşeni indirilemedi. İnternet bağlantını kontrol edip programı yeniden aç.")
+            return False, None
+        return with_exe(winbrowsers.bundled_chromium_exe, "chromium")()
+
+    return [
+        ("edge", with_exe(winbrowsers.healthy_edge, "edge")),
+        ("chrome", with_exe(winbrowsers.healthy_chrome, "chrome")),
+        ("chromium", with_exe(winbrowsers.bundled_chromium_exe, "chromium")),
+        ("default", default_browser),
+        ("download", download_then_open),
+    ]
 
 
 def open_window(url: str) -> Optional[subprocess.Popen]:
-    """Arayüzü uygulama penceresi gibi (adres çubuğu olmadan) açar."""
-    edge = find_edge()
-    if edge:
-        profile = app_data_dir() / "arayuz-penceresi"
-        try:
-            return subprocess.Popen([
-                edge, f"--app={url}", f"--user-data-dir={profile}", "--window-size=1000,900",
-                "--no-first-run", "--no-default-browser-check", "--disable-features=Translate",
-            ])
-        except OSError:
-            pass
-    webbrowser.open(url)
+    """Var olan bir kopyanın penceresini yeniden açmak için basit yol."""
+    for _name, launch in window_launchers(url)[:4]:
+        ok, proc = launch()
+        if ok:
+            return proc
     return None
 
 
-def self_test() -> int:
+def self_test() -> str:
     """Derlenmiş programın çalıştığını doğrular (GitHub derlemesinde kullanılır)."""
     import asyncio
     import threading
@@ -96,24 +145,52 @@ def self_test() -> int:
     name = asyncio.run(check_browser())
     server.shutdown()
     say(f"SELF-TEST OK: arayüz + tarayıcı ({name})")
-    return 0
+    return name
+
+
+def self_test_window() -> str:
+    """Arayüz penceresinin gerçekten açılıp sunucuya bağlandığını dener."""
+    state = AppState()
+    server = start_server(state)
+    url = f"http://127.0.0.1:{state.port}/"
+    try:
+        for name, launch in window_launchers(url):
+            started = time.monotonic()
+            ok, proc = launch()
+            if not ok:
+                continue
+            while time.monotonic() - started < 40:
+                if state.last_poll > started:
+                    if proc is not None and proc.poll() is None:
+                        proc.kill()
+                    say(f"SELF-TEST WINDOW OK: {name}")
+                    return name
+                time.sleep(0.5)
+            if proc is not None and proc.poll() is None:
+                proc.kill()
+        raise RuntimeError("Arayüz penceresi hiçbir yolla açılamadı")
+    finally:
+        server.shutdown()
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="DouyinIndirici")
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--self-test-window", action="store_true")
     parser.add_argument("--no-window", action="store_true")
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--version", action="version", version=__version__)
     args = parser.parse_args(argv)
+    winbrowsers.suppress_windows_error_dialogs()
+    winbrowsers.prepare_playwright_env()
 
-    if args.self_test:
+    if args.self_test or args.self_test_window:
         # Pencereli derlemede hata kutusu açılıp beklemesin: sonucu dosyaya yaz.
         report = Path(os.environ.get("DOUYIN_INDIRICI_SELFTEST_OUT", "selftest.txt"))
         try:
-            code = self_test()
-            report.write_text("OK", encoding="utf-8")
-            return code
+            detail = self_test_window() if args.self_test_window else self_test()
+            report.write_text(f"OK {detail}", encoding="utf-8")
+            return 0
         except BaseException:
             import traceback
             report.write_text("FAIL\n" + traceback.format_exc(), encoding="utf-8")
@@ -133,24 +210,48 @@ def main(argv=None) -> int:
         pass
     say(f"Douyin İndirici çalışıyor: {url}")
 
-    window = None if args.no_window else open_window(url)
-    started = time.monotonic()
+    launchers = [] if args.no_window else window_launchers(url)
+    window: Optional[subprocess.Popen] = None
+    launched_at = 0.0
+    ui_seen = False
+    watch_process = False
+
+    def next_window() -> bool:
+        nonlocal window, launched_at
+        while launchers:
+            _name, launch = launchers.pop(0)
+            ok, proc = launch()
+            if ok:
+                window, launched_at = proc, time.monotonic()
+                return True
+        return False
+
+    if not args.no_window and not next_window():
+        _message_box(f"Pencere açılamadı. Tarayıcında şu adresi aç: {url}")
+        launched_at = time.monotonic()
     try:
         while True:
             time.sleep(1)
             if args.no_window:
                 continue
-            if window is not None:
+            now = time.monotonic()
+            if not ui_seen:
+                if state.last_poll > launched_at:
+                    ui_seen = True
+                    # Pencere kendi sürecinde açıldıysa o süreç kapanınca programı kapat.
+                    watch_process = window is not None and window.poll() is None
+                    continue
+                failed_fast = window is not None and window.poll() not in (None, 0)
+                if failed_fast or now - launched_at > WINDOW_WAIT:
+                    if not next_window():
+                        if now - launched_at > HEARTBEAT_TIMEOUT * 4:
+                            break  # hiçbir yol işe yaramadı
+                continue
+            if watch_process:
                 if window.poll() is not None:
-                    if time.monotonic() - started < 8:
-                        # Edge pencereyi zaten açık bir kopyaya devretti; nabızla izlemeye geç.
-                        window = None
-                        continue
                     break  # pencere kapatıldı
-            else:
-                last = state.last_poll or started
-                if time.monotonic() - last > HEARTBEAT_TIMEOUT and not state.engine.running:
-                    break
+            elif now - (state.last_poll or now) > HEARTBEAT_TIMEOUT and not state.engine.running:
+                break
     except KeyboardInterrupt:
         pass
     finally:
