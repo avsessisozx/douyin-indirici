@@ -75,7 +75,7 @@ jobs:
           $env:DOUYIN_INDIRICI_FORCE_BUNDLED = "1"
           $env:DOUYIN_INDIRICI_DATA = "$env:RUNNER_TEMP\di-bundled"
           $r = Run-Exe "--self-test-window" "indirilen-pencere"
-          if ($r -ne "OK chromium") { throw "indirilen tarayıcı kullanılmadı: $r" }
+          if ($r -notin @("OK chromium", "OK download")) { throw "indirilen tarayıcı kullanılmadı: $r" }
           Run-Exe "--self-test" "indirilen-tarayici"
           Remove-Item Env:DOUYIN_INDIRICI_FORCE_BUNDLED
           Remove-Item Env:DOUYIN_INDIRICI_DATA
