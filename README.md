@@ -68,7 +68,7 @@ python -m unittest tests.test_units                                   # birim te
 DOUYIN_INDIRICI_BROWSER=chromium python -m unittest tests.test_integration   # uçtan uca testler (sahte Douyin)
 ```
 
-Her `main` güncellemesinde GitHub Actions Windows'ta testleri gerçek Edge ile çalıştırır, `.exe`'yi derler ve derlenmiş `.exe`'nin açılıp Edge'i sürebildiğini dener. `v` ile başlayan bir etiket (ör. `v1.0.1`) gönderilince `.exe` Releases sayfasına konur.
+Her `main` güncellemesinde GitHub Actions Windows'ta testleri gerçek Edge ile çalıştırır, `.exe`'yi derler ve derlenmiş `.exe`'nin açılıp Edge'i sürebildiğini dener. Testler geçerse `.exe`, `douyin_indirici/__init__.py` içindeki sürüm numarasıyla Releases sayfasına konur.
 
 ## Lisans ve teşekkür
 
