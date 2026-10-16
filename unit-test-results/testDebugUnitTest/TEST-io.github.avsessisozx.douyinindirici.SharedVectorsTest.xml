@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.avsessisozx.douyinindirici.SharedVectorsTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-10-16T05:47:49.410Z" hostname="runnervm8k3b6" time="0.116">
+  <properties/>
+  <testcase name="naming" classname="io.github.avsessisozx.douyinindirici.SharedVectorsTest" time="0.005"/>
+  <testcase name="links" classname="io.github.avsessisozx.douyinindirici.SharedVectorsTest" time="0.006"/>
+  <testcase name="posts" classname="io.github.avsessisozx.douyinindirici.SharedVectorsTest" time="0.104"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
