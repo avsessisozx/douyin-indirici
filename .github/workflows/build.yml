@@ -136,7 +136,8 @@ jobs:
         run: |
           python tools/annotate_junit.py "Android birim testi" android/app/build/test-results || true
           if [ -f build.log ]; then
-            errors=$(grep -E "^e: |error:|What went wrong|Could not|FAILED|Exception" -A6 build.log | head -100 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            errors=$(grep -E "^e: " build.log | sed -E 's#file:///home/runner/work/[^ ]*/douyinindirici/##' | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            [ -n "$errors" ] || errors=$(grep -E "What went wrong|Could not|FAILED|Exception" -A6 build.log | head -80 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
             echo "::error title=Android derleme hatası::${errors}"
           fi
 
@@ -176,8 +177,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          [ -d ci-out ] || exit 0
-          cp fake.log ci-out/ 2>/dev/null || true
+          mkdir -p ci-out
+          cp fake.log build.log ci-out/ 2>/dev/null || true
+          cp -r android/app/build/test-results ci-out/unit-test-results 2>/dev/null || true
           branch="ci-sonuc-${GITHUB_REF_NAME//\//-}"
           cd ci-out
           git init -q

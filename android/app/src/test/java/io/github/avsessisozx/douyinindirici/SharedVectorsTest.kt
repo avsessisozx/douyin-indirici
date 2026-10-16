@@ -7,7 +7,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * tests/vectors/*.json: Windows (Python) sürümünün ürettiği beklenen sonuçlar.
+ * tests/vectors klasöründeki .json dosyaları: Windows (Python) sürümünün ürettiği beklenen sonuçlar.
  * Android sürümü aynı linki aynı şekilde tanımalı, aynı kaliteyi seçmeli,
  * dosyaları aynı adla kaydetmeli.
  */

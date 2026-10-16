@@ -24,7 +24,7 @@ data class Msg(val key: String, val params: Map<String, Any?> = emptyMap()) {
 
 fun msg(key: String, vararg params: Pair<String, Any?>): Msg = Msg(key, mapOf(*params))
 
-/** Dil dosyalarını (ceviriler/*.json) okur. Eksik anahtar İngilizceye, o da yoksa anahtarın kendisine düşer. */
+/** Dil dosyalarını (ceviriler klasöründeki .json dosyaları) okur. Eksik anahtar İngilizceye, o da yoksa anahtarın kendisine düşer. */
 class Tr(private val loader: (String) -> String?, private val languages: List<String>) {
 
     private val cache = HashMap<String, Map<String, String>>()
