@@ -125,6 +125,12 @@ class EndToEndTest {
         return Core.engine.snapshot(0)
     }
 
+    /** Sahte sunucunun doğrulama ekranını yeniden göstermesini sağlar. */
+    private fun resetCaptcha() {
+        val c = java.net.URL("$base/captcha-reset").openConnection() as java.net.HttpURLConnection
+        try { c.responseCode } finally { c.disconnect() }
+    }
+
     private fun files(): List<String> =
         out.walkTopDown().filter { it.isFile }.map { it.relativeTo(out).path }.sorted().toList()
 
@@ -189,6 +195,7 @@ class EndToEndTest {
 
     @Test
     fun b_captchaShowsOverlayAndContinues() {
+        resetCaptcha()
         launch()
         setLink("https://www.douyin.com/user/$captchaProfile")
         setSelect("limit", "10")
@@ -315,6 +322,7 @@ class EndToEndTest {
     @Test
     fun j_captchaWhileScreenRebuilt() {
         // Doğrulama ekranı açıkken ekran yeniden kurulursa bulmaca yine görünmeli.
+        resetCaptcha()
         val s = launch()
         setLink("https://www.douyin.com/user/$captchaProfile")
         setSelect("limit", "10")

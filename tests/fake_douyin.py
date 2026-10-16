@@ -131,6 +131,10 @@ class FakeDouyin:
                     real = PROFILE_OK if sec == PROFILE_CAPTCHA else sec
                     return self.send(200, PROFILE_PAGE.replace("__SEC__", real), "text/html; charset=utf-8")
 
+                if path == "/captcha-reset":
+                    fake.captcha_passed = False
+                    return self.send(200, "{}", "application/json")
+
                 if path == "/captcha-pass":
                     fake.captcha_passed = True
                     return self.send(200, "{}", "application/json")
