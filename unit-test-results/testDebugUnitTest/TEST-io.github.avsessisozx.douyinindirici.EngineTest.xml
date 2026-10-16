@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.avsessisozx.douyinindirici.EngineTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-10-16T04:35:13.578Z" hostname="runnervm8k3b6" time="1.6">
+  <properties/>
+  <testcase name="stopMidway" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="1.061"/>
+  <testcase name="contentFilterAndLimit" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.056"/>
+  <testcase name="singlePostIgnoresProfileFilters" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.054"/>
+  <testcase name="profileDownloadsEverythingAndSkipsOnSecondRun" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.11"/>
+  <testcase name="loginWallPrivateEmptyAndErrors" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.209"/>
+  <testcase name="snapshotLogsArePaged" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.052"/>
+  <testcase name="mirrorFallbackAndFailures" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.052"/>
+  <testcase name="startValidation" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
