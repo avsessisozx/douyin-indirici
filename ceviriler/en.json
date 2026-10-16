@@ -67,7 +67,7 @@
   "ui.version": "Version {v}",
   "ui.language_label": "Language",
   "ui.language_auto": "Automatic",
-  "ui.overlay_captcha_title": "Douyin verification: solve the puzzle",
+  "ui.overlay_captcha_title": "Douyin verification: solve the puzzle (pinch to zoom if it is small)",
   "ui.overlay_login_title": "Sign in to Douyin (optional)",
   "ui.overlay_done": "Done",
   "ui.confirm_leave": "A download is running. It will stop if you leave.",

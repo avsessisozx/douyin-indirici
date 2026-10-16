@@ -178,9 +178,15 @@ class EndToEndTest {
         screenshot("02_link_yapistirildi")
 
         var midShot = false
+        var openButtonWhileRunning = false
         val snap = startAndWait {
-            if (!midShot && Core.engine.filesDone.get() > 2) { screenshot("03_indiriliyor"); midShot = true }
+            if (!midShot && Core.engine.filesDone.get() > 2) {
+                if (js("document.getElementById('done-actions').offsetParent !== null") == "true" && Core.engine.running) openButtonWhileRunning = true
+                screenshot("03_indiriliyor"); midShot = true
+            }
         }
+        assertFalse("'Galeride aç' indirme sürerken görünmemeli", openButtonWhileRunning)
+        assertEquals("true", js("document.getElementById('done-actions').offsetParent !== null"))
         screenshot("04_bitti")
         val l = logs(snap)
         assertEquals(l, "done", snap.getString("phase"))
@@ -237,6 +243,8 @@ class EndToEndTest {
         launch()
         setLink("https://www.douyin.com/video/7400000000000000003")
         assertEquals("true", js("document.getElementById('mode-single').checked"))
+        assertEquals("profil ayarları tek gönderide gizli olmalı", "true",
+            js("document.getElementById('row-content').offsetParent === null && document.getElementById('row-limit').offsetParent === null"))
         val snap = startAndWait()
         assertEquals(logs(snap), "done", snap.getString("phase"))
         assertEquals(1, snap.getInt("files_done"))

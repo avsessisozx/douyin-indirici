@@ -67,7 +67,7 @@
   "ui.version": "Sürüm {v}",
   "ui.language_label": "Dil",
   "ui.language_auto": "Otomatik",
-  "ui.overlay_captcha_title": "Douyin doğrulaması: bulmacayı çöz",
+  "ui.overlay_captcha_title": "Douyin doğrulaması: bulmacayı çöz (küçükse iki parmakla yakınlaştır)",
   "ui.overlay_login_title": "Douyin'e giriş (isteğe bağlı)",
   "ui.overlay_done": "Bitti",
   "ui.confirm_leave": "İndirme sürüyor. Çıkarsan durur.",
