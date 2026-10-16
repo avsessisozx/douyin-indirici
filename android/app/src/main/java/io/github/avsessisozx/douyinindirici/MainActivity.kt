@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -37,8 +38,10 @@ class MainActivity : Activity(), ApiHost {
 
     lateinit var uiWeb: WebView; private set
     private lateinit var holder: DouyinHolder
+    private lateinit var popup: FrameLayout
     private lateinit var dyPane: LinearLayout
     private lateinit var headerTitle: TextView
+    private lateinit var hideButton: Button
     private lateinit var doneButton: Button
 
     @Volatile var uiReady = false; private set
@@ -61,30 +64,45 @@ class MainActivity : Activity(), ApiHost {
             setBackgroundColor(bg)
         }
 
-        // --- Douyin tarayıcısı (arkada)
-        dyPane = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(surface) }
+        // --- Arayüz
+        uiWeb = WebView(this).apply { setBackgroundColor(bg); translationZ = 1f }
+        root.addView(uiWeb, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+
+        // --- Douyin penceresi: normalde arayüzün arkasında (görünmez ama çalışır),
+        //     doğrulama/giriş gerektiğinde arayüzün üstünde ortada açılır pencere olur.
+        popup = FrameLayout(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            isClickable = true   // açıkken arkadaki arayüze dokunulmasın
+            translationZ = 0f
+        }
+        dyPane = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply { setColor(surface); cornerRadius = dp(16).toFloat() }
+            clipToOutline = true
+            elevation = dp(12).toFloat()
+        }
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(8), dp(8), dp(8))
-            setBackgroundColor(surface)
+            setPadding(dp(16), dp(10), dp(8), dp(10))
         }
         headerTitle = TextView(this).apply {
             setTextColor(ink)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
         }
+        hideButton = Button(this).apply { setOnClickListener { userHideOverlay() } }
         doneButton = Button(this).apply {
             setOnClickListener { overlayDone?.invoke() }
             visibility = View.GONE
         }
         header.addView(headerTitle, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        header.addView(hideButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         header.addView(doneButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         dyPane.addView(header, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        root.addView(dyPane, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-
-        // --- Arayüz (önde)
-        uiWeb = WebView(this).apply { setBackgroundColor(bg) }
-        root.addView(uiWeb, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        popup.addView(dyPane, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply {
+            setMargins(dp(12), dp(24), dp(12), dp(24))
+        })
+        root.addView(popup, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         setContentView(root)
 
         // Gizli Douyin tarayıcısı uygulamaya ait; ekran yeniden kurulsa da yaşar.
@@ -158,17 +176,34 @@ class MainActivity : Activity(), ApiHost {
         overlayMode = mode
         overlayDone = onDone
         headerTitle.text = Core.text(if (mode == "login") "ui.overlay_login_title" else "ui.overlay_captcha_title")
+        hideButton.text = Core.text("ui.overlay_hide")
         doneButton.text = Core.text("ui.overlay_done")
+        hideButton.visibility = if (onDone == null) View.VISIBLE else View.GONE
         doneButton.visibility = if (onDone != null) View.VISIBLE else View.GONE
-        uiWeb.visibility = View.INVISIBLE
+        popup.setBackgroundColor(Color.argb(150, 0, 0, 0))   // arkadaki arayüz karartılır
+        popup.translationZ = 10f
         holder.webView.requestFocus()
     }
 
     fun clearOverlay() {
         overlayMode = null
         overlayDone = null
-        uiWeb.visibility = View.VISIBLE
+        popup.setBackgroundColor(Color.TRANSPARENT)
+        popup.translationZ = 0f
+        uiWeb.requestFocus()
         uiWeb.evaluateJavascript("window.douyinRefresh && window.douyinRefresh()", null)
+    }
+
+    /** Kullanıcı pencereyi gizledi: iş beklemeye devam eder, arayüzdeki düğmeyle tekrar açılır. */
+    private fun userHideOverlay() {
+        holder.userHide()
+    }
+
+    /** Testler için: pencerenin "Gizle" düğmesine basar. */
+    fun pressHideForTest() { hideButton.performClick() }
+
+    override fun showVerification() {
+        runOnUiThread { holder.reshow() }
     }
 
     // ------------------------------------------------------------ ApiHost
@@ -208,7 +243,7 @@ class MainActivity : Activity(), ApiHost {
     override fun onBackPressed() {
         when {
             overlayMode == "login" -> overlayDone?.invoke()
-            overlayMode == "captcha" -> {}                         // bulmaca çözülmeden geri dönülmez
+            overlayMode != null -> userHideOverlay()               // pencere gizlenir, iş bekler
             Core.engine.running -> moveTaskToBack(true)             // indirme sürsün
             else -> @Suppress("DEPRECATION") super.onBackPressed()
         }

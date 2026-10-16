@@ -157,20 +157,28 @@ class WebDouyin(private val webView: WebView, private val overlay: OverlayHost) 
     private val now: Long get() = SystemClock.elapsedRealtime()
 
     // ------------------------------------------------------------ doğrulama
-    private suspend fun isBlocked(): Boolean = eval(BLOCK_JS) == "true"
+    /** Görünür doğrulama varsa sebebini, yoksa null döner. */
+    private suspend fun blockReason(): String? = evalString(BLOCK_JS)?.takeIf { it.isNotEmpty() }
 
-    /** Doğrulama varsa kullanıcının çözmesini bekler. Doğrulama olduysa true döner. */
-    private suspend fun waitIfBlocked(timeoutMs: Long = 900_000): Boolean {
-        if (!isBlocked()) return false
+    /**
+     * Doğrulama varsa kullanıcının çözmesini bekler. Doğrulama olduysa true döner.
+     * satisfied: beklenen veri bu arada geldiyse (sayfa aslında engellenmemiş) beklemeyi bırakır.
+     */
+    private suspend fun waitIfBlocked(timeoutMs: Long = 900_000, satisfied: () -> Boolean = { false }): Boolean {
+        if (satisfied()) return false
+        val reason = blockReason() ?: return false
+        if (satisfied()) return false
         listener?.captcha(true)
         listener?.log("warn", msg("browser.captcha_mobile"))
+        listener?.log("info", msg("browser.captcha_reason", "reason" to reason))
         withContext(Dispatchers.Main) { overlay.showOverlay("captcha", null) }
         try {
             val start = now
             while (now - start < timeoutMs) {
                 if (cancel.get()) return true
                 delay(1500)
-                if (!isBlocked()) {
+                if (satisfied()) return false
+                if (blockReason() == null) {
                     listener?.log("ok", msg("browser.captcha_done"))
                     delay(1500)
                     return true
@@ -188,16 +196,15 @@ class WebDouyin(private val webView: WebView, private val overlay: OverlayHost) 
         listener?.log("info", msg("browser.opened_mobile"))
     }
 
-    override suspend fun resolve(p: Links.Parsed): Links.Parsed {
-        if (p.kind != Links.SHORT) return p
+    override suspend fun resolve(p: Links.Parsed): Links.Parsed = withContext(Dispatchers.Main) {
+        if (p.kind != Links.SHORT) return@withContext p
         listener?.log("info", msg("browser.short_opening"))
         goto(p.url)
         repeat(30) {
             checkCancel()
-            val current = withContext(Dispatchers.Main) { webView.url } ?: ""
-            val r = Links.classifyFinalUrl(current)
-            if (r.ok) return r
-            if (!waitIfBlocked()) delay(500)
+            val r = Links.classifyFinalUrl(webView.url ?: "")
+            if (r.ok) return@withContext r
+            if (!waitIfBlocked(satisfied = { Links.classifyFinalUrl(webView.url ?: "").ok })) delay(500)
         }
         throw DouyinError(msg("browser.short_failed"))
     }
@@ -229,7 +236,7 @@ class WebDouyin(private val webView: WebView, private val overlay: OverlayHost) 
             while (now < deadline) {
                 checkCancel()
                 found?.let { return@withContext it }
-                if (waitIfBlocked()) {
+                if (waitIfBlocked(satisfied = { found != null })) {
                     deadline = now + 25_000
                     goto(target)
                     continue
@@ -318,7 +325,7 @@ class WebDouyin(private val webView: WebView, private val overlay: OverlayHost) 
                 val target = "https://www.douyin.com/user/$secUid"
                 goto(target)
                 delay(2000)
-                if (waitIfBlocked()) { goto(target); delay(2000) }
+                if (waitIfBlocked(satisfied = { st.order.isNotEmpty() })) { goto(target); delay(2000) }
                 if (st.order.isEmpty()) accept(embeddedPosts(""))
 
                 result.reason = scrollLoop(st, limit, idleMs)
@@ -357,7 +364,8 @@ class WebDouyin(private val webView: WebView, private val overlay: OverlayHost) 
             if (st.hasMore == 0 && st.responses > 0) return "end"
             if (st.private && st.order.isEmpty()) return "private"
             if (st.reportedCount == 0 && now - st.lastChange > 6000) return "empty"
-            if (waitIfBlocked()) { st.lastChange = now; continue }
+            val before = st.order.size
+            if (waitIfBlocked(satisfied = { st.order.size > before })) { st.lastChange = now; continue }
             eval(DISMISS_JS)
             eval(SCROLL_JS)
             delay(1300)
@@ -411,6 +419,10 @@ class WebDouyin(private val webView: WebView, private val overlay: OverlayHost) 
         fun captureScript(send: String): String = """
 (function(){
   if (window.__dyHooked) return; window.__dyHooked = true;
+  try {
+    var mp = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function(){ try { this.muted = true; } catch(e){} return mp.apply(this, arguments); };
+  } catch(e){}
   var want = function(u){ return /\/aweme\/v1\/web\/(aweme\/post|aweme\/detail|user\/profile\/other)\//.test(String(u||'')); };
   var send = function(url, text){ try { var s = String(url) + '\n' + text; $send; } catch(e){} };
   var of = window.fetch;
@@ -440,25 +452,40 @@ class WebDouyin(private val webView: WebView, private val overlay: OverlayHost) 
 })();
 """
 
-        private const val BLOCK_JS = """
+        /**
+         * Sayfada GÖRÜNÜR bir doğrulama (bulmaca) var mı? Varsa kısa bir sebep, yoksa boş metin döner.
+         * Gerçek Douyin sayfalarında görünmez güvenlik çerçeveleri ve boş doğrulama kutuları hep
+         * bulunur; bunlar doğrulama sayılmaz (1.1.0'daki yanlış alarmın sebebi buydu).
+         */
+        const val BLOCK_JS = """
 (function(){
+  function vis(el){
+    if (!el) return false;
+    var r = el.getBoundingClientRect();
+    if (r.width <= 40 || r.height <= 40) return false;
+    if (r.bottom <= 0 || r.right <= 0 || r.top >= innerHeight || r.left >= innerWidth) return false;
+    var e = el;
+    while (e && e.nodeType === 1) {
+      var cs = getComputedStyle(e);
+      if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) return false;
+      e = e.parentElement;
+    }
+    return true;
+  }
   var t = document.title || '';
-  if (t.indexOf('验证码') >= 0 || t.indexOf('安全验证') >= 0) return true;
+  if (t.indexOf('验证码') >= 0 || t.indexOf('安全验证') >= 0) return 'title:' + t.slice(0, 40);
   var u = location.href.toLowerCase().split('?')[0];
-  if (u.indexOf('verifycenter') >= 0 || u.indexOf('/captcha') >= 0) return true;
-  var hints = ['verifycenter', 'captcha', '/verify', 'rmc.bytedance.com'];
+  if (u.indexOf('verifycenter') >= 0 || u.indexOf('/captcha') >= 0) return 'url';
+  var hints = ['verifycenter', 'captcha', '/verify'];
   var frames = document.querySelectorAll('iframe');
   for (var i = 0; i < frames.length; i++) {
-    var s = (frames[i].src || '').toLowerCase();
-    for (var j = 0; j < hints.length; j++) if (s.indexOf(hints[j]) >= 0) return true;
+    var s = (frames[i].getAttribute('src') || '').toLowerCase();
+    for (var j = 0; j < hints.length; j++) if (s.indexOf(hints[j]) >= 0 && vis(frames[i])) return 'iframe:' + s.slice(0, 80);
   }
   var sel = "#captcha_container, #captcha-verify-image, .captcha_verify_container, .captcha-verify-container, [class*='captcha-verify'], [id^='captcha_']";
   var els = document.querySelectorAll(sel);
-  for (var k = 0; k < els.length; k++) {
-    var r = els[k].getBoundingClientRect();
-    if (r.width > 40 && r.height > 40 && getComputedStyle(els[k]).visibility !== 'hidden') return true;
-  }
-  return false;
+  for (var k = 0; k < els.length; k++) if (vis(els[k])) return 'el:' + String(els[k].id || els[k].className).slice(0, 60);
+  return '';
 })()
 """
 

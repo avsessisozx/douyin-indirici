@@ -40,6 +40,8 @@ class EndToEndTest {
     private val okProfile = "MS4wLjABAAAAprofile_ok_000000000001"
     private val wallProfile = "MS4wLjABAAAAprofile_wall_0000000001"
     private val captchaProfile = "MS4wLjABAAAAprofile_captcha_000001"
+    private val slowCaptchaProfile = "MS4wLjABAAAAprofile_captcha_slow01"
+    private var sawOverlay = false
 
     @Before
     fun setUp() {
@@ -115,8 +117,10 @@ class EndToEndTest {
         clickId("start")
         assertTrue("indirme başlamadı: " + jsText("document.getElementById('form-error').textContent"),
             waitUntil(10_000) { Core.engine.running || Core.engine.phase != "idle" })
+        sawOverlay = false
         val end = System.currentTimeMillis() + timeoutMs
         while (Core.engine.running && System.currentTimeMillis() < end) {
+            if (activity()?.overlayMode != null) sawOverlay = true
             during?.invoke()
             Thread.sleep(300)
         }
@@ -129,6 +133,12 @@ class EndToEndTest {
     private fun resetCaptcha() {
         val c = java.net.URL("$base/captcha-reset").openConnection() as java.net.HttpURLConnection
         try { c.responseCode } finally { c.disconnect() }
+    }
+
+    /** Gerçek Douyin'deki görünmez güvenlik öğeleri doğrulama sanılmamalı (1.1.0 hatası). */
+    private fun assertNoFalseCaptcha(snap: JSONObject) {
+        assertFalse("doğrulama penceresi gereksiz yere açıldı\n" + logs(snap), sawOverlay)
+        assertFalse(logs(snap), Core.engine.logKeys().contains("browser.captcha_mobile"))
     }
 
     private fun files(): List<String> =
@@ -190,6 +200,7 @@ class EndToEndTest {
         screenshot("04_bitti")
         val l = logs(snap)
         assertEquals(l, "done", snap.getString("phase"))
+        assertNoFalseCaptcha(snap)
         assertEquals(l, 14, snap.getInt("found_posts"))
         val f = files()
         assertEquals(f.toString(), 13, f.count { it.endsWith(".mp4") && "hareketli" !in it })
@@ -248,6 +259,7 @@ class EndToEndTest {
         val snap = startAndWait()
         assertEquals(logs(snap), "done", snap.getString("phase"))
         assertEquals(1, snap.getInt("files_done"))
+        assertNoFalseCaptcha(snap)
         var count = 0
         resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
             arrayOf(MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE), where, args, null)?.use { c ->
@@ -270,6 +282,7 @@ class EndToEndTest {
         setLink("https://www.douyin.com/note/7400000000000000002")
         val snap = startAndWait()
         assertEquals(logs(snap), "done", snap.getString("phase"))
+        assertNoFalseCaptcha(snap)
         val f = files()
         assertTrue(f.toString(), f.any { it.endsWith("_01.jpg") || it.endsWith("/01.jpg") })
         assertEquals(f.toString(), 4, f.size)
@@ -342,6 +355,39 @@ class EndToEndTest {
         assertTrue("yeniden kurulan ekranda doğrulama gösterilmedi", shown)
         assertTrue(waitUntil(120_000) { !Core.engine.running })
         assertEquals("done", Core.engine.phase)
+        assertEquals(null, activity(s)?.overlayMode)
+    }
+
+    @Test
+    fun k_captchaPopupCanBeHiddenAndReopened() {
+        resetCaptcha()
+        val s = launch()
+        setLink("https://www.douyin.com/user/$slowCaptchaProfile")
+        setSelect("limit", "5")
+        clickId("start")
+        assertTrue("doğrulama penceresi açılmadı", waitUntil(25_000) { activity(s)?.overlayMode == "captcha" })
+        screenshot("11_dogrulama_penceresi")
+
+        // Geri tuşu pencereyi gizler, iş beklemeye devam eder
+        inst.runOnMainSync { @Suppress("DEPRECATION") activity(s)!!.onBackPressed() }
+        assertTrue(waitUntil(3_000) { activity(s)?.overlayMode == null })
+        assertTrue("iş durmamalı", Core.engine.running && Core.engine.captcha)
+        assertTrue("'Doğrulamayı aç' düğmesi yok",
+            waitUntil(5_000) { js("!!document.querySelector('#notes button[data-verify]')") == "true" })
+        screenshot("12_dogrulama_gizlendi")
+
+        // Düğmeyle tekrar açılır
+        js("document.querySelector('#notes button[data-verify]').click(), true")
+        assertTrue("pencere tekrar açılmadı", waitUntil(5_000) { activity(s)?.overlayMode == "captcha" })
+
+        // "Gizle" düğmesi de gizler
+        inst.runOnMainSync { activity(s)!!.pressHideForTest() }
+        assertTrue(waitUntil(3_000) { activity(s)?.overlayMode == null })
+
+        // Bulmaca çözülünce iş kendiliğinden biter
+        assertTrue(waitUntil(120_000) { !Core.engine.running })
+        assertEquals(logs(Core.engine.snapshot(0)), "done", Core.engine.phase)
+        assertEquals(5, Core.engine.foundPosts.get())
         assertEquals(null, activity(s)?.overlayMode)
     }
 }

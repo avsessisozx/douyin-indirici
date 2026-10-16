@@ -238,6 +238,16 @@ class SharedVectorTests(unittest.TestCase):
             self.assertEqual(media.author_folder(c["name"], c["sec_uid"]), c["output"])
 
 
+class CaptchaParityTests(unittest.TestCase):
+    def test_block_js_same_on_windows_and_android(self):
+        import re
+        from douyin_indirici.browser import BLOCK_JS
+        kt = (Path(__file__).resolve().parents[1] / "android/app/src/main/java/io/github/avsessisozx/"
+              "douyinindirici/WebDouyin.kt").read_text(encoding="utf-8")
+        android_js = re.search(r'const val BLOCK_JS = """\n(.*?)"""', kt, re.S).group(1)
+        self.assertEqual(BLOCK_JS, android_js)
+
+
 class BrowserHealthTests(unittest.TestCase):
     def test_elf_check(self):
         from douyin_indirici import winbrowsers

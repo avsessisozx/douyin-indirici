@@ -359,6 +359,7 @@ body.loading main { visibility: hidden; }
     if (lastState) render(lastState, true);
   }
 
+  let notesKey = '';
   let linkKind = null, running = false, logNext = 0, lastFolder = '', lastState = null;
   let settingsLoaded = false, parseTimer = null, parseSeq = 0, lastPhase = '', detectMsg = null, detectClass = '';
 
@@ -549,14 +550,28 @@ body.loading main { visibility: hidden; }
       if (s.files_failed) add('ui.count_failed', s.files_failed);
     }
 
-    const notes = $('notes');
-    notes.textContent = '';
-    if (s.captcha) notes.appendChild(note('warn', [el('b', t('ui.note_captcha_title')), el('br'), document.createTextNode(pick('ui.note_captcha_body'))]));
-    if (s.login_wall && !running) {
-      const b = el('button', t('ui.login_button')); b.className = 'btn'; b.onclick = () => $('login').click();
-      notes.appendChild(note('warn', [document.createTextNode(t('ui.note_login_wall')), el('br'), b]));
+    // Notlar sadece değiştiğinde yeniden çizilir (yoksa düğmeye basılırken kaybolabilir).
+    const errText2 = (!running && s.phase === 'error' && s.summary) ? renderMsg(s.summary) : '';
+    const nk = [s.captcha, s.login_wall && !running, errText2, platform, JSON.stringify(S['ui.start'] || '')].join('|');
+    if (nk !== notesKey) {
+      notesKey = nk;
+      const notes = $('notes');
+      notes.textContent = '';
+      if (s.captcha) {
+        const parts = [el('b', t('ui.note_captcha_title')), el('br'), document.createTextNode(pick('ui.note_captcha_body'))];
+        if (platform === 'mobile') {
+          const b = el('button', t('ui.show_verification')); b.className = 'btn'; b.dataset.verify = '1';
+          b.onclick = () => api('/api/show-verify', {}).catch(() => {});
+          parts.push(el('br'), b);
+        }
+        notes.appendChild(note('warn', parts));
+      }
+      if (s.login_wall && !running) {
+        const b = el('button', t('ui.login_button')); b.className = 'btn'; b.onclick = () => $('login').click();
+        notes.appendChild(note('warn', [document.createTextNode(t('ui.note_login_wall')), el('br'), b]));
+      }
+      if (errText2) notes.appendChild(note('err', [document.createTextNode(errText2)]));
     }
-    if (!running && s.phase === 'error' && s.summary) notes.appendChild(note('err', [document.createTextNode(renderMsg(s.summary))]));
 
     $('done-actions').hidden = running || s.mode === 'login' || !(s.files_done || s.files_skipped);
 

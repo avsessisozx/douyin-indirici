@@ -11,6 +11,7 @@ interface ApiHost {
     fun startDownloadService()
     fun openResult(location: String?)
     fun requestNotificationPermission()
+    fun showVerification()
 }
 
 class Api(private val host: ApiHost) {
@@ -96,6 +97,11 @@ class Api(private val host: ApiHost) {
 
             "/api/open-folder" -> {
                 host.openResult(engine.lastLocation)
+                200 to JSONObject().put("ok", true)
+            }
+
+            "/api/show-verify" -> {
+                host.showVerification()
                 200 to JSONObject().put("ok", true)
             }
 

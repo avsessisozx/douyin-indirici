@@ -56,12 +56,18 @@ class IntegrationTests(unittest.TestCase):
                 print(f"  [{line['level']}] {text}")
         return snap, out
 
+    def assert_no_false_captcha(self, snap):
+        keys = [(l.get("msg") or {}).get("key") for l in snap["logs"]]
+        self.assertNotIn("browser.captcha", keys, "görünmez öğeler doğrulama sanıldı")
+        self.assertFalse(snap["captcha"])
+
     def files(self, out):
         return sorted(str(p.relative_to(out)).replace("\\", "/") for p in out.rglob("*") if p.is_file())
 
     def test_profile_all(self):
         snap, out = self.run_job(f"https://www.douyin.com/user/{fake_douyin.PROFILE_OK}", "profile")
         self.assertEqual(snap["phase"], "done", snap["summary"])
+        self.assert_no_false_captcha(snap)
         self.assertEqual(snap["found_posts"], fake_douyin.TOTAL_POSTS)
         files = self.files(out)
         videos = [f for f in files if f.endswith(".mp4") and "hareketli" not in f]
@@ -112,6 +118,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertIn(snap["phase"], ("done", "error"))
 
     def test_captcha_wait(self):
+        urllib.request.urlopen(self.fake.base + "/captcha-reset").read()
         snap, out = self.run_job(f"https://www.douyin.com/user/{fake_douyin.PROFILE_CAPTCHA}", "profile", limit=3)
         self.assertEqual(snap["phase"], "done", snap["summary"])
         self.assertTrue(any((l.get("msg") or {}).get("key") == "browser.captcha" for l in snap["logs"]))
@@ -120,6 +127,7 @@ class IntegrationTests(unittest.TestCase):
     def test_single_video_embedded(self):
         snap, out = self.run_job(f"https://www.douyin.com/video/{fake_douyin.SSR_VIDEO_ID}", "single")
         self.assertEqual(snap["phase"], "done", snap["summary"])
+        self.assert_no_false_captcha(snap)
         files = self.files(out)
         self.assertEqual(len(files), 1, files)
         self.assertTrue(files[0].startswith("SSR作者/") and files[0].endswith(f"_SSR video_{fake_douyin.SSR_VIDEO_ID}.mp4"))
@@ -127,6 +135,7 @@ class IntegrationTests(unittest.TestCase):
     def test_single_note_via_detail_api(self):
         snap, out = self.run_job(f"https://www.douyin.com/note/{fake_douyin.NOTE_ID}", "single", content="video")
         self.assertEqual(snap["phase"], "done", snap["summary"])
+        self.assert_no_false_captcha(snap)
         files = self.files(out)
         self.assertEqual(len([f for f in files if f.endswith((".jpg", ".png"))]), 3, files)
 

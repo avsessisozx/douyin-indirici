@@ -26,9 +26,40 @@ POST_API = "/aweme/v1/web/aweme/post/"
 DETAIL_API = "/aweme/v1/web/aweme/detail/"
 PROFILE_API = "/aweme/v1/web/user/profile/other/"
 
-_BLOCK_TITLES = ("验证码", "安全验证")
-_BLOCK_FRAME_HINTS = ("verifycenter", "captcha", "/verify", "rmc.bytedance.com")
-_BLOCK_SELECTORS = "#captcha_container, #captcha-verify-image, .captcha_verify_container, .captcha-verify-container, [class*='captcha-verify'], [id^='captcha_']"
+# Sayfada GÖRÜNÜR bir doğrulama (bulmaca) var mı? Varsa kısa bir sebep, yoksa boş metin döner.
+# Gerçek Douyin sayfalarında görünmez güvenlik çerçeveleri ve boş doğrulama kutuları hep bulunur;
+# bunlar doğrulama sayılmaz. Android sürümündeki WebDouyin.BLOCK_JS ile birebir aynı olmalı
+# (tests/test_units.py bunu denetler).
+BLOCK_JS = """(function(){
+  function vis(el){
+    if (!el) return false;
+    var r = el.getBoundingClientRect();
+    if (r.width <= 40 || r.height <= 40) return false;
+    if (r.bottom <= 0 || r.right <= 0 || r.top >= innerHeight || r.left >= innerWidth) return false;
+    var e = el;
+    while (e && e.nodeType === 1) {
+      var cs = getComputedStyle(e);
+      if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) return false;
+      e = e.parentElement;
+    }
+    return true;
+  }
+  var t = document.title || '';
+  if (t.indexOf('验证码') >= 0 || t.indexOf('安全验证') >= 0) return 'title:' + t.slice(0, 40);
+  var u = location.href.toLowerCase().split('?')[0];
+  if (u.indexOf('verifycenter') >= 0 || u.indexOf('/captcha') >= 0) return 'url';
+  var hints = ['verifycenter', 'captcha', '/verify'];
+  var frames = document.querySelectorAll('iframe');
+  for (var i = 0; i < frames.length; i++) {
+    var s = (frames[i].getAttribute('src') || '').toLowerCase();
+    for (var j = 0; j < hints.length; j++) if (s.indexOf(hints[j]) >= 0 && vis(frames[i])) return 'iframe:' + s.slice(0, 80);
+  }
+  var sel = "#captcha_container, #captcha-verify-image, .captcha_verify_container, .captcha-verify-container, [class*='captcha-verify'], [id^='captcha_']";
+  var els = document.querySelectorAll(sel);
+  for (var k = 0; k < els.length; k++) if (vis(els[k])) return 'el:' + String(els[k].id || els[k].className).slice(0, 60);
+  return '';
+})()
+"""
 
 
 class BrowserError(Exception):
@@ -212,39 +243,26 @@ class DouyinBrowser:
             raise BrowserError(msg("browser.closed"))
 
     # ------------------------------------------------------------ doğrulama
-    async def _is_blocked(self, page) -> bool:
+    async def _block_reason(self, page) -> str:
         try:
-            title = await page.title()
+            return str(await page.evaluate(BLOCK_JS) or "")
         except Exception:
-            title = ""
-        if any(word in title for word in _BLOCK_TITLES):
-            return True
-        for frame in page.frames:
-            if frame is page.main_frame:
-                url = (frame.url or "").lower().split("?")[0]
-                if "verifycenter" in url or "/captcha" in url:
-                    return True
-                continue
-            url = (frame.url or "").lower()
-            if any(hint in url for hint in _BLOCK_FRAME_HINTS):
-                return True
-        try:
-            return bool(await page.evaluate(
-                """(sel) => [...document.querySelectorAll(sel)].some(el => {
-                    const r = el.getBoundingClientRect();
-                    return r.width > 40 && r.height > 40 && getComputedStyle(el).visibility !== 'hidden';
-                })""",
-                _BLOCK_SELECTORS,
-            ))
-        except Exception:
-            return False
+            return ""
 
-    async def wait_if_blocked(self, page, timeout: float = 900) -> bool:
-        """Doğrulama varsa kullanıcının çözmesini bekler. Doğrulama olduysa True döner."""
-        if not await self._is_blocked(page):
+    async def wait_if_blocked(self, page, timeout: float = 900, satisfied=None) -> bool:
+        """Doğrulama varsa kullanıcının çözmesini bekler. Doğrulama olduysa True döner.
+
+        satisfied: beklenen veri bu arada geldiyse (sayfa aslında engellenmemiş) beklemeyi bırakır.
+        """
+        done = satisfied or (lambda: False)
+        if done():
+            return False
+        reason = await self._block_reason(page)
+        if not reason or done():
             return False
         self.on_captcha(True)
         self.log("warn", msg("browser.captcha"))
+        self.log("info", msg("browser.captcha_reason", reason=reason))
         try:
             await page.bring_to_front()
         except Exception:
@@ -256,7 +274,9 @@ class DouyinBrowser:
                     return True
                 self._check_alive()
                 await asyncio.sleep(1.5)
-                if not await self._is_blocked(page):
+                if done():
+                    return False
+                if not await self._block_reason(page):
                     self.log("ok", msg("browser.captcha_done"))
                     await asyncio.sleep(1.5)
                     return True
@@ -330,7 +350,7 @@ class DouyinBrowser:
             result = links.classify_final_url(page.url)
             if result.ok:
                 return result
-            if await self.wait_if_blocked(page):
+            if await self.wait_if_blocked(page, satisfied=lambda: links.classify_final_url(page.url).ok):
                 continue
             await asyncio.sleep(0.5)
         raise BrowserError(msg("browser.short_failed"))
@@ -376,7 +396,7 @@ class DouyinBrowser:
                 self._check_alive()
                 if "item" in found:
                     return found["item"]
-                if await self.wait_if_blocked(page):
+                if await self.wait_if_blocked(page, satisfied=lambda: "item" in found):
                     deadline = time.monotonic() + 25
                     await self._goto(page, target)
                     continue
@@ -467,7 +487,7 @@ class DouyinBrowser:
             self.log("info", msg("browser.profile_opening"))
             await self._goto(page, f"https://www.douyin.com/user/{sec_uid}")
             await asyncio.sleep(2)
-            if await self.wait_if_blocked(page):
+            if await self.wait_if_blocked(page, satisfied=lambda: bool(st.order)):
                 await self._goto(page, f"https://www.douyin.com/user/{sec_uid}")
                 await asyncio.sleep(2)
 
@@ -523,7 +543,8 @@ class DouyinBrowser:
                 return "private"
             if st.reported_count == 0 and time.monotonic() - st.last_change > 6:
                 return "empty"
-            if await self.wait_if_blocked(page):
+            before = len(st.order)
+            if await self.wait_if_blocked(page, satisfied=lambda: len(st.order) > before):
                 st.last_change = time.monotonic()
                 continue
             await self._dismiss_popups(page)

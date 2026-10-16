@@ -21,6 +21,8 @@ class DouyinHolder private constructor(appContext: Context) : OverlayHost {
     private var ui: MainActivity? = null
     var overlayMode: String? = null; private set
     var overlayDone: (() -> Unit)? = null; private set
+    /** Kullanıcı pencereyi "Gizle" ile kapattı mı? (iş hâlâ bekliyor olabilir) */
+    var hiddenByUser = false; private set
 
     /** Ekran kuruldu: tarayıcıyı ona tak, açık bir doğrulama/giriş ekranı varsa göster. */
     fun attach(activity: MainActivity, parent: ViewGroup, params: ViewGroup.LayoutParams) {
@@ -28,7 +30,7 @@ class DouyinHolder private constructor(appContext: Context) : OverlayHost {
         (webView.parent as? ViewGroup)?.removeView(webView)
         parent.addView(webView, params)
         ui = activity
-        overlayMode?.let { activity.applyOverlay(it, overlayDone) }
+        if (!hiddenByUser) overlayMode?.let { activity.applyOverlay(it, overlayDone) }
     }
 
     /** Ekran kapandı: tarayıcıyı çıkar ama kapatma. */
@@ -42,13 +44,29 @@ class DouyinHolder private constructor(appContext: Context) : OverlayHost {
     override fun showOverlay(mode: String, onDone: (() -> Unit)?) {
         overlayMode = mode
         overlayDone = onDone
+        hiddenByUser = false
         ui?.applyOverlay(mode, onDone)
     }
 
     override fun hideOverlay() {
         overlayMode = null
         overlayDone = null
+        hiddenByUser = false
         ui?.clearOverlay()
+    }
+
+    /** Kullanıcı gizledi: pencere kapanır ama bekleyen iş sürer. */
+    fun userHide() {
+        if (overlayMode == null) return
+        hiddenByUser = true
+        ui?.clearOverlay()
+    }
+
+    /** Arayüzdeki "Doğrulamayı aç" düğmesi. */
+    fun reshow() {
+        val mode = overlayMode ?: return
+        hiddenByUser = false
+        ui?.applyOverlay(mode, overlayDone)
     }
 
     companion object {

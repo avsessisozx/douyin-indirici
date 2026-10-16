@@ -21,6 +21,16 @@ PROFILE_OK = "MS4wLjABAAAAprofile_ok_000000000001"
 PROFILE_WALL = "MS4wLjABAAAAprofile_wall_0000000001"
 PROFILE_PRIVATE = "MS4wLjABAAAAprofile_private_000001"
 PROFILE_CAPTCHA = "MS4wLjABAAAAprofile_captcha_000001"
+PROFILE_CAPTCHA_SLOW = "MS4wLjABAAAAprofile_captcha_slow01"   # bulmaca 15 sn sonra çözülür
+
+# Gerçek Douyin sayfalarında hep bulunan, doğrulama SAYILMAMASI gereken görünmez öğeler.
+# (1.1.0'da Android bunları bulmaca sanıp ekranı kapatmıştı.)
+DECOYS = (
+    '<iframe src="/verifycenter/captcha/v2" style="display:none"></iframe>'
+    '<iframe src="/verify/sdk" width="0" height="0" style="border:0"></iframe>'
+    '<div id="captcha_container" style="width:0;height:0;overflow:hidden"></div>'
+    '<div class="captcha-verify-container" style="visibility:hidden;width:300px;height:200px"></div>'
+)
 SSR_VIDEO_ID = "7400000000000000003"
 NOTE_ID = "7400000000000000002"
 PAGE_SIZE = 6
@@ -126,10 +136,12 @@ class FakeDouyin:
 
                 if path.startswith("/user/"):
                     sec = path.split("/")[2]
-                    if sec == PROFILE_CAPTCHA and not fake.captcha_passed:
-                        return self.send(200, CAPTCHA_PAGE, "text/html; charset=utf-8")
-                    real = PROFILE_OK if sec == PROFILE_CAPTCHA else sec
-                    return self.send(200, PROFILE_PAGE.replace("__SEC__", real), "text/html; charset=utf-8")
+                    if sec in (PROFILE_CAPTCHA, PROFILE_CAPTCHA_SLOW) and not fake.captcha_passed:
+                        delay = "15000" if sec == PROFILE_CAPTCHA_SLOW else "3000"
+                        return self.send(200, CAPTCHA_PAGE.replace("__DELAY__", delay), "text/html; charset=utf-8")
+                    real = PROFILE_OK if sec in (PROFILE_CAPTCHA, PROFILE_CAPTCHA_SLOW) else sec
+                    return self.send(200, PROFILE_PAGE.replace("__SEC__", real).replace("__DECOYS__", DECOYS),
+                                     "text/html; charset=utf-8")
 
                 if path == "/captcha-reset":
                     fake.captcha_passed = False
@@ -143,12 +155,12 @@ class FakeDouyin:
                     aid = path.split("/")[2]
                     data = {"app": {"videoDetail": samples.ssr_video(aid, base=f"{fake.base}/media")}}
                     rd = quote(json.dumps(data))
-                    page = f"<html><head><title>video</title></head><body><script id=\"RENDER_DATA\" type=\"application/json\">{rd}</script><p>video</p></body></html>"
+                    page = f"<html><head><title>video</title></head><body><script id=\"RENDER_DATA\" type=\"application/json\">{rd}</script><p>video</p>{DECOYS}</body></html>"
                     return self.send(200, page, "text/html; charset=utf-8")
 
                 if path.startswith("/note/"):
                     aid = path.split("/")[2]
-                    page = f"<html><head><title>note</title></head><body><script>fetch('/aweme/v1/web/aweme/detail/?aweme_id={aid}')</script></body></html>"
+                    page = f"<html><head><title>note</title></head><body><script>fetch('/aweme/v1/web/aweme/detail/?aweme_id={aid}')</script>{DECOYS}</body></html>"
                     return self.send(200, page, "text/html; charset=utf-8")
 
                 return self.send(404, "not found", "text/plain")
@@ -158,7 +170,7 @@ class FakeDouyin:
 
 PROFILE_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>Sahte Kişi的抖音 - 抖音</title>
 <style>body{margin:0} .tile{height:420px;border-bottom:1px solid #ccc}</style></head><body>
-<div id="list"></div><div id="sentinel" style="height:10px"></div>
+<div id="list"></div><div id="sentinel" style="height:10px"></div>__DECOYS__
 <script>
 const sec = "__SEC__"; let cursor = 0, more = 1, loading = false;
 fetch('/aweme/v1/web/user/profile/other/?sec_user_id=' + sec);
@@ -181,7 +193,7 @@ window.addEventListener('scroll', () => {
 CAPTCHA_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>验证码中间页</title></head><body>
 <div id="captcha_container" style="width:300px;height:200px;background:#eee">doğrulama</div>
 <script>
-setTimeout(async () => { await fetch('/captcha-pass'); location.reload(); }, 3000);
+setTimeout(async () => { await fetch('/captcha-pass'); location.reload(); }, __DELAY__);
 </script></body></html>"""
 
 
