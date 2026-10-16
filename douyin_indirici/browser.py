@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import unquote
 
 from . import links, winbrowsers
+from .i18n import Msg, msg
 from .media import aweme_id_of, find_post_dicts
 
 POST_API = "/aweme/v1/web/aweme/post/"
@@ -31,7 +32,14 @@ _BLOCK_SELECTORS = "#captcha_container, #captcha-verify-image, .captcha_verify_c
 
 
 class BrowserError(Exception):
-    """Kullanıcıya gösterilecek Türkçe açıklamalı hata."""
+    """Kullanıcıya gösterilecek, çevrilebilir açıklamalı hata."""
+
+    def __init__(self, message: Msg) -> None:
+        super().__init__(message.key)
+        self.message = message
+
+    def __str__(self) -> str:
+        return self.message.render()
 
 
 def base_url() -> str:
@@ -72,7 +80,7 @@ class DouyinBrowser:
         self,
         data_dir: Path,
         *,
-        log: Callable[[str, str], None],
+        log: Callable[[str, Any], None],
         cancel: threading.Event,
         on_captcha: Callable[[bool], None],
     ) -> None:
@@ -92,7 +100,7 @@ class DouyinBrowser:
         try:
             from playwright.async_api import async_playwright
         except Exception as exc:  # pragma: no cover
-            raise BrowserError(f"Tarayıcı bileşeni yüklenemedi: {exc}")
+            raise BrowserError(msg("browser.load_failed", error=str(exc)))
 
         self._pw = await async_playwright().start()
         errors: List[str] = []
@@ -108,10 +116,7 @@ class DouyinBrowser:
                     break
         if self.context is None:
             await self._close_pw()
-            raise BrowserError(
-                "Hiçbir tarayıcı açılamadı. Edge'in kurulumu bozuk olabilir ve yedek tarayıcı da indirilemedi. "
-                "İnternet bağlantını kontrol edip programı yeniden aç.\nAyrıntı: " + " | ".join(errors)
-            )
+            raise BrowserError(msg("browser.none", detail=" | ".join(errors)))
 
         await self.context.add_init_script(
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
@@ -127,7 +132,7 @@ class DouyinBrowser:
             self.user_agent = await self.page.evaluate("navigator.userAgent")
         except Exception:
             self.user_agent = ""
-        self.log("info", f"{self.channel_name} açıldı. İş bitene kadar bu pencereyi kapatma.")
+        self.log("info", msg("browser.opened", name=self.channel_name))
         return self
 
     def _channel_order(self) -> List[str]:
@@ -138,7 +143,7 @@ class DouyinBrowser:
         if winbrowsers.healthy_edge():
             order.append("msedge")
         elif winbrowsers.find_edge():
-            self.log("warn", "Bilgisayardaki Edge'in kurulumu eksik görünüyor (yarım kalmış güncelleme). Başka tarayıcı kullanılacak.")
+            self.log("warn", msg("browser.edge_broken"))
         if winbrowsers.healthy_chrome():
             order.append("chrome")
         order.append("chromium")
@@ -163,7 +168,7 @@ class DouyinBrowser:
         elif not os.environ.get("DOUYIN_INDIRICI_BROWSER"):
             exe = winbrowsers.bundled_chromium_exe()
             if not exe:
-                errors.append("chromium: henüz indirilmedi")
+                errors.append("chromium: not downloaded")
                 return False
             kwargs["executable_path"] = exe
         try:
@@ -173,12 +178,9 @@ class DouyinBrowser:
             errors.append(f"{channel}: {text.splitlines()[0] if text else exc}")
             if "ProcessSingleton" in text or "already in use" in text:
                 await self._close_pw()
-                raise BrowserError(
-                    "Tarayıcı profili şu an başka bir pencerede kullanılıyor. "
-                    "Açık kalmış başka bir Douyin İndirici penceresi varsa kapatıp tekrar dene."
-                )
+                raise BrowserError(msg("browser.profile_in_use"))
             return False
-        self.channel_name = {"msedge": "Microsoft Edge", "chrome": "Google Chrome"}.get(channel, "Tarayıcı")
+        self.channel_name = {"msedge": "Microsoft Edge", "chrome": "Google Chrome"}.get(channel, "Chromium")
         return True
 
     async def __aexit__(self, *exc) -> None:
@@ -207,7 +209,7 @@ class DouyinBrowser:
 
     def _check_alive(self) -> None:
         if self.closed:
-            raise BrowserError("Tarayıcı penceresi kapatıldı. İşlem durduruldu.")
+            raise BrowserError(msg("browser.closed"))
 
     # ------------------------------------------------------------ doğrulama
     async def _is_blocked(self, page) -> bool:
@@ -242,7 +244,7 @@ class DouyinBrowser:
         if not await self._is_blocked(page):
             return False
         self.on_captcha(True)
-        self.log("warn", "Douyin bir doğrulama istiyor. Açılan tarayıcı penceresinde doğrulamayı tamamla; program bekliyor.")
+        self.log("warn", msg("browser.captcha"))
         try:
             await page.bring_to_front()
         except Exception:
@@ -255,10 +257,10 @@ class DouyinBrowser:
                 self._check_alive()
                 await asyncio.sleep(1.5)
                 if not await self._is_blocked(page):
-                    self.log("ok", "Doğrulama tamamlandı, devam ediliyor.")
+                    self.log("ok", msg("browser.captcha_done"))
                     await asyncio.sleep(1.5)
                     return True
-            raise BrowserError("Doğrulama 15 dakika içinde tamamlanmadı. Tekrar dene.")
+            raise BrowserError(msg("browser.captcha_timeout"))
         finally:
             self.on_captcha(False)
 
@@ -307,13 +309,13 @@ class DouyinBrowser:
             if self.cancel.is_set():
                 return
             if page.is_closed():
-                raise BrowserError("Tarayıcı penceresi kapatıldı. İşlem durduruldu.")
+                raise BrowserError(msg("browser.closed"))
             message = str(exc).splitlines()[0]
             if "net::ERR_INTERNET_DISCONNECTED" in message or "ERR_NAME_NOT_RESOLVED" in message:
-                raise BrowserError("İnternet bağlantısı yok ya da Douyin'e ulaşılamıyor.")
+                raise BrowserError(msg("browser.no_internet"))
             if "Timeout" not in message:
-                raise BrowserError(f"Sayfa açılamadı: {message}")
-            self.log("warn", "Sayfa yavaş açılıyor, mevcut haliyle devam ediliyor.")
+                raise BrowserError(msg("browser.page_failed", error=message))
+            self.log("warn", msg("browser.slow"))
 
     # ------------------------------------------------------------ kısa link
     async def resolve(self, parsed: links.ParsedLink) -> links.ParsedLink:
@@ -322,7 +324,7 @@ class DouyinBrowser:
             return parsed
         self._check_alive()
         page = self.page
-        self.log("info", "Kısa link açılıyor…")
+        self.log("info", msg("browser.short_opening"))
         await self._goto(page, parsed.url)
         for _ in range(30):
             result = links.classify_final_url(page.url)
@@ -331,7 +333,7 @@ class DouyinBrowser:
             if await self.wait_if_blocked(page):
                 continue
             await asyncio.sleep(0.5)
-        raise BrowserError("Kısa link bir videoya ya da profile açılmadı. Linkin doğru olduğundan emin ol.")
+        raise BrowserError(msg("browser.short_failed"))
 
     # ------------------------------------------------------------ tek gönderi
     async def get_post(self, aweme_id: str, url: str = "", *, page=None, quiet: bool = False) -> Dict[str, Any]:
@@ -364,7 +366,7 @@ class DouyinBrowser:
         try:
             target = url or f"https://www.douyin.com/video/{aweme_id}"
             if not quiet:
-                self.log("info", "Gönderi sayfası açılıyor…")
+                self.log("info", msg("browser.post_opening"))
             await self._goto(page, target)
             deadline = time.monotonic() + 25
             embedded_checked = 0.0
@@ -393,9 +395,7 @@ class DouyinBrowser:
                 await asyncio.gather(*tasks, return_exceptions=True)
         if "item" in found:
             return found["item"]
-        raise BrowserError(
-            "Bu gönderinin bilgisi alınamadı. Gönderi silinmiş, gizli ya da sadece giriş yapanlara açık olabilir."
-        )
+        raise BrowserError(msg("browser.post_failed"))
 
     # ------------------------------------------------------------ profil
     async def collect_profile(
@@ -464,7 +464,7 @@ class DouyinBrowser:
         page.on("response", on_response)
         result = ProfileResult()
         try:
-            self.log("info", "Profil sayfası açılıyor…")
+            self.log("info", msg("browser.profile_opening"))
             await self._goto(page, f"https://www.douyin.com/user/{sec_uid}")
             await asyncio.sleep(2)
             if await self.wait_if_blocked(page):
@@ -481,14 +481,14 @@ class DouyinBrowser:
             if not st.order and result.reason not in ("cancel", "private", "empty"):
                 ids = await self._ids_from_dom(page)
                 if ids:
-                    self.log("info", f"Liste doğrudan alınamadı; {len(ids)} gönderi tek tek açılacak.")
+                    self.log("info", msg("browser.dom_fallback", n=len(ids)))
                     for aid in ids:
                         if self.cancel.is_set() or (limit and len(st.order) >= limit):
                             break
                         try:
                             accept([await self.get_post(aid, quiet=True)])
                         except BrowserError as exc:
-                            self.log("warn", f"{aid}: {exc}")
+                            self.log("warn", msg("engine.download_failed", name=aid, error=exc.message))
                     result.reason = "cancel" if self.cancel.is_set() else "end"
         finally:
             page.remove_listener("response", on_response)
@@ -595,6 +595,6 @@ class DouyinBrowser:
         """Kullanıcının isteğe bağlı olarak Douyin'e giriş yapması için pencereyi açık tutar."""
         page = self.page
         await self._goto(page, "https://www.douyin.com/")
-        self.log("info", "Douyin açıldı. Giriş yapabilirsin (isteğe bağlı). Bitince tarayıcı penceresini kapat.")
+        self.log("info", msg("browser.login_open"))
         while not page.is_closed() and not self.cancel.is_set():
             await asyncio.sleep(1)

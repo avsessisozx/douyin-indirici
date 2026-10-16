@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
+from .i18n import Msg, msg
+
 CHUNK = 256 * 1024
 TIMEOUT = 30
 
@@ -37,7 +39,7 @@ class FetchResult:
     ok: bool
     path: Optional[Path] = None
     size: int = 0
-    error: str = ""
+    error: Optional[Msg] = None
     status: int = 0          # son HTTP durum kodu (403 ise tarayıcıyla denenebilir)
 
 
@@ -77,7 +79,7 @@ def fetch(
 ) -> FetchResult:
     """URL listesini sırayla dener; ilk başarılı indirmeyi kaydeder."""
     stem_path.parent.mkdir(parents=True, exist_ok=True)
-    last = FetchResult(False, error="İndirilecek adres yok.")
+    last = FetchResult(False, error=msg("fetch.no_url"))
     ctx = _ssl_context()
     for url in urls:
         for _attempt in range(attempts_per_url):
@@ -100,7 +102,7 @@ def _fetch_one(url, stem_path, ext, fallback_ext, headers, cancel, on_progress, 
             status = getattr(response, "status", 200)
             content_type = response.headers.get("Content-Type", "")
             if content_type.lower().startswith(("text/html", "application/json", "text/plain")):
-                return FetchResult(False, error="Sunucu dosya yerine sayfa döndürdü (erişim engeli olabilir).", status=403)
+                return FetchResult(False, error=msg("fetch.html_page"), status=403)
             total = int(response.headers.get("Content-Length") or 0)
             final_ext = ext or ext_from_content_type(content_type, fallback_ext)
             done = 0
@@ -117,10 +119,10 @@ def _fetch_one(url, stem_path, ext, fallback_ext, headers, cancel, on_progress, 
                         on_progress(done, total)
             if done == 0:
                 _remove(part)
-                return FetchResult(False, error="Boş dosya geldi.", status=status)
+                return FetchResult(False, error=msg("fetch.empty"), status=status)
             if total and done < total:
                 _remove(part)
-                return FetchResult(False, error="İndirme yarıda kesildi.", status=status)
+                return FetchResult(False, error=msg("fetch.incomplete"), status=status)
             final = stem_path.with_name(stem_path.name + final_ext)
             os.replace(part, final)
             return FetchResult(True, final, done, status=status)
@@ -129,14 +131,14 @@ def _fetch_one(url, stem_path, ext, fallback_ext, headers, cancel, on_progress, 
         raise
     except urllib.error.HTTPError as exc:
         _remove(part)
-        return FetchResult(False, error=f"Sunucu hata verdi (HTTP {exc.code}).", status=exc.code)
+        return FetchResult(False, error=msg("fetch.http", code=exc.code), status=exc.code)
     except (urllib.error.URLError, TimeoutError, ConnectionError, ssl.SSLError) as exc:
         _remove(part)
         reason = getattr(exc, "reason", exc)
-        return FetchResult(False, error=f"Bağlantı sorunu: {reason}")
+        return FetchResult(False, error=msg("fetch.connection", reason=str(reason)))
     except OSError as exc:
         _remove(part)
-        return FetchResult(False, error=f"Dosya yazılamadı: {exc}")
+        return FetchResult(False, error=msg("fetch.write", error=str(exc)))
 
 
 def write_bytes(data: bytes, stem_path: Path, ext: str) -> FetchResult:
@@ -149,7 +151,7 @@ def write_bytes(data: bytes, stem_path: Path, ext: str) -> FetchResult:
         os.replace(part, final)
     except OSError as exc:
         _remove(part)
-        return FetchResult(False, error=f"Dosya yazılamadı: {exc}")
+        return FetchResult(False, error=msg("fetch.write", error=str(exc)))
     return FetchResult(True, final, len(data))
 
 

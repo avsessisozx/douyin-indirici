@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 from typing import Callable, List, Optional
 
+from .i18n import msg
 from .paths import app_data_dir
 
 _VERSION_DIR = re.compile(r"^\d+\.\d+\.\d+\.\d+$")
@@ -138,12 +139,12 @@ def install_bundled_chromium(log: Callable[[str, str], None]) -> bool:
     try:
         from playwright._impl._driver import compute_driver_executable, get_driver_env
     except Exception as exc:
-        log("error", f"Tarayıcı bileşeni indirilemedi: {exc}")
+        log("error", msg("chromium.failed", detail=str(exc)))
         return False
     node, cli = compute_driver_executable()
     env = get_driver_env()
     env["PLAYWRIGHT_BROWSERS_PATH"] = os.environ["PLAYWRIGHT_BROWSERS_PATH"]
-    log("info", "Programın kendi tarayıcısı indiriliyor (yaklaşık 150 MB, sadece ilk seferde). Birkaç dakika sürebilir…")
+    log("info", msg("chromium.downloading"))
     try:
         result = subprocess.run(
             [node, cli, "install", "chromium"],
@@ -151,11 +152,11 @@ def install_bundled_chromium(log: Callable[[str, str], None]) -> bool:
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except Exception as exc:
-        log("error", f"Tarayıcı bileşeni indirilemedi: {exc}")
+        log("error", msg("chromium.failed", detail=str(exc)))
         return False
     if result.returncode != 0:
         tail = (result.stderr or result.stdout or b"").decode("utf-8", "replace").strip().splitlines()[-3:]
-        log("error", "Tarayıcı bileşeni indirilemedi. İnternet bağlantını kontrol et. " + " ".join(tail))
+        log("error", msg("chromium.failed", detail=" ".join(tail)))
         return False
-    log("ok", "Tarayıcı bileşeni indirildi.")
+    log("ok", msg("chromium.done"))
     return True

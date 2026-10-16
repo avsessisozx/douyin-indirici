@@ -52,7 +52,8 @@ class IntegrationTests(unittest.TestCase):
         snap = engine.snapshot()
         if os.environ.get("TEST_VERBOSE"):
             for line in snap["logs"]:
-                print(f"  [{line['level']}] {line['text']}")
+                text = line.get("text") or json.dumps(line.get("msg"), ensure_ascii=False)
+                print(f"  [{line['level']}] {text}")
         return snap, out
 
     def files(self, out):
@@ -113,7 +114,7 @@ class IntegrationTests(unittest.TestCase):
     def test_captcha_wait(self):
         snap, out = self.run_job(f"https://www.douyin.com/user/{fake_douyin.PROFILE_CAPTCHA}", "profile", limit=3)
         self.assertEqual(snap["phase"], "done", snap["summary"])
-        self.assertTrue(any("doğrulama" in l["text"].lower() for l in snap["logs"]))
+        self.assertTrue(any((l.get("msg") or {}).get("key") == "browser.captcha" for l in snap["logs"]))
         self.assertEqual(snap["found_posts"], 3)
 
     def test_single_video_embedded(self):
@@ -154,7 +155,10 @@ class IntegrationTests(unittest.TestCase):
         base = f"http://127.0.0.1:{state.port}"
         try:
             html = urllib.request.urlopen(base + "/").read().decode("utf-8")
-            self.assertIn("İndirmeyi başlat", html)
+            self.assertIn('data-i18n="ui.start"', html)
+            strings = json.loads(urllib.request.urlopen(base + "/api/strings").read())
+            self.assertIn(strings["lang"], ("tr", "en"))
+            self.assertTrue(strings["strings"]["ui.start"])
 
             def post(path, body, headers=None):
                 req = urllib.request.Request(base + path, data=json.dumps(body).encode(),

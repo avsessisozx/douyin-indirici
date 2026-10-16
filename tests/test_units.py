@@ -148,7 +148,7 @@ class MediaTests(unittest.TestCase):
     def test_deleted_video(self):
         item = samples.api_video()
         item["video"] = {}
-        self.assertIn("bulunamadı", media.build_post(item).skipped_reason)
+        self.assertEqual(media.build_post(item).skipped_reason.key, "skip.no_video")
 
 
 class MiscTests(unittest.TestCase):
@@ -172,6 +172,70 @@ class MiscTests(unittest.TestCase):
             (stem.parent / "01.webp").write_bytes(b"x")
             self.assertIsNotNone(existing_file(stem))
             self.assertIsNone(existing_file(stem, ".mp4"))
+
+
+class I18nTests(unittest.TestCase):
+    def test_translate_and_fallback(self):
+        from douyin_indirici import i18n
+        self.assertEqual(i18n.translate("ui.start", "tr"), "İndirmeyi başlat")
+        self.assertEqual(i18n.translate("ui.start", "en"), "Start download")
+        self.assertEqual(i18n.translate("ui.start", "xx"), "Start download")  # bilinmeyen dil -> İngilizce
+        self.assertEqual(i18n.translate("yok.boyle", "tr"), "yok.boyle")
+        m = i18n.msg("engine.skipped_post", reason=i18n.msg("skip.no_image"), name="a")
+        self.assertEqual(m.render("tr"), "Atlandı (resim adresi bulunamadı): a")
+        self.assertEqual(m.to_json()["params"]["reason"]["key"], "skip.no_image")
+        self.assertEqual(i18n.translate("summary", "tr", done=3, skipped=2),
+                         "Bitti: 3 dosya indirildi, 2 dosya zaten vardı.")
+        self.assertEqual(i18n.translate("summary", "en", done=1), "Done: 1 files downloaded.")
+
+    def test_translation_files_complete(self):
+        import subprocess
+        out = subprocess.run([sys.executable, str(Path(__file__).resolve().parents[1] / "tools" / "check_i18n.py")],
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+
+
+class SharedVectorTests(unittest.TestCase):
+    """tests/vectors/*.json: Android (Kotlin) sürümü de aynı dosyalarla test edilir."""
+
+    def load(self, name):
+        import json
+        return json.loads((Path(__file__).resolve().parent / "vectors" / name).read_text(encoding="utf-8"))
+
+    def test_links(self):
+        data = self.load("links.json")
+        for case in data["parse"]:
+            p = links.parse_link(case["input"])
+            got = {"kind": p.kind, "url": p.url, "aweme_id": p.aweme_id, "sec_uid": p.sec_uid,
+                   "error": p.error.key if p.error else None, "describe": p.describe().key}
+            want = {k: case[k] for k in got}
+            self.assertEqual(got, want, case["input"])
+        for case in data["final_url"]:
+            p = links.classify_final_url(case["input"])
+            self.assertEqual((p.kind, p.aweme_id, p.sec_uid), (case["kind"], case["aweme_id"], case["sec_uid"]))
+
+    def test_posts(self):
+        for case in self.load("posts.json"):
+            for r in case["results"]:
+                post = media.build_post(case["item"], content=r["content"], quality=r["quality"], compat=r["compat"])
+                got = {
+                    "aweme_id": post.aweme_id, "author_name": post.author_name, "author_sec_uid": post.author_sec_uid,
+                    "is_gallery": post.is_gallery, "skipped": post.skipped_reason.key if post.skipped_reason else None,
+                    "stem_tail": post.stem.split("_", 1)[1],
+                    "files": [{"rel_tail": f.rel_stem.split("_", 1)[1], "kind": f.kind, "ext": f.ext,
+                               "urls": f.urls, "size": f.expected_size} for f in post.files],
+                }
+                want = {k: r[k] for k in got}
+                self.assertEqual(got, want, f"{case['name']} {r['content']} {r['quality']} {r['compat']}")
+
+    def test_naming(self):
+        data = self.load("naming.json")
+        for c in data["sanitize"]:
+            self.assertEqual(naming.sanitize(c["input"], max_len=c["max_len"]), c["output"], repr(c["input"]))
+        for c in data["title"]:
+            self.assertEqual(naming.title_from_desc(c["input"]), c["output"])
+        for c in data["author_folder"]:
+            self.assertEqual(media.author_folder(c["name"], c["sec_uid"]), c["output"])
 
 
 class BrowserHealthTests(unittest.TestCase):

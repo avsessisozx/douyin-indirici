@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urlparse
 
+from .i18n import Msg, msg
 from .naming import post_stem, sanitize
 
 QUALITY_HIGHEST = "highest"
@@ -49,7 +50,7 @@ class Post:
     author_sec_uid: str
     is_gallery: bool
     files: List[MediaFile] = field(default_factory=list)
-    skipped_reason: str = ""
+    skipped_reason: Optional[Msg] = None
 
     @property
     def stem(self) -> str:
@@ -310,7 +311,7 @@ def build_post(item: Dict[str, Any], *, content: str = CONTENT_ALL,
 
     if post.is_gallery:
         if content == CONTENT_VIDEO:
-            post.skipped_reason = "resimli gönderi (sadece video seçili)"
+            post.skipped_reason = msg("skip.gallery_video_only")
             return post
         images = gallery_items(item)
         width = max(2, len(str(len(images))))
@@ -325,16 +326,16 @@ def build_post(item: Dict[str, Any], *, content: str = CONTENT_ALL,
                 if tier:
                     post.files.append(MediaFile(tier.urls, f"{stem}/{num}_hareketli", "live", ".mp4", tier.size))
         if not post.files:
-            post.skipped_reason = "resim adresi bulunamadı"
+            post.skipped_reason = msg("skip.no_image")
         return post
 
     if content == CONTENT_IMAGE:
-        post.skipped_reason = "video (sadece resim seçili)"
+        post.skipped_reason = msg("skip.video_image_only")
         return post
     video = item.get("video") if isinstance(item.get("video"), dict) else {}
     tier = choose_video_urls(video, quality, compat)
     if tier is None:
-        post.skipped_reason = "video adresi bulunamadı (silinmiş, gizli ya da ücretli olabilir)"
+        post.skipped_reason = msg("skip.no_video")
         return post
     post.files.append(MediaFile(tier.urls, stem, "video", ".mp4", tier.size))
     return post

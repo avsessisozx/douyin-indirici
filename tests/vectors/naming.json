@@ -1,0 +1,111 @@
+{
+ "sanitize": [
+  {
+   "input": "a<b>:c\"/d\\e|f?g*h",
+   "max_len": 60,
+   "output": "a b c d e f g h"
+  },
+  {
+   "input": "CON",
+   "max_len": 60,
+   "output": "CON_"
+  },
+  {
+   "input": "com3.txt",
+   "max_len": 60,
+   "output": "com3.txt_"
+  },
+  {
+   "input": "  ...  ",
+   "max_len": 60,
+   "output": "adsiz"
+  },
+  {
+   "input": "x‮yz\nq",
+   "max_len": 60,
+   "output": "xyz q"
+  },
+  {
+   "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "max_len": 40,
+   "output": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+   "input": "  trailing dots...  ",
+   "max_len": 60,
+   "output": "trailing dots"
+  },
+  {
+   "input": "中文 标题 😀 emoji",
+   "max_len": 60,
+   "output": "中文 标题 😀 emoji"
+  },
+  {
+   "input": "tab\there",
+   "max_len": 60,
+   "output": "tab here"
+  },
+  {
+   "input": "",
+   "max_len": 60,
+   "output": "adsiz"
+  },
+  {
+   "input": null,
+   "max_len": 60,
+   "output": "adsiz"
+  }
+ ],
+ "title": [
+  {
+   "input": "Güzel manzara #travel #china",
+   "output": "Güzel manzara"
+  },
+  {
+   "input": "#风景 #photo",
+   "output": "风景 photo"
+  },
+  {
+   "input": "",
+   "output": "gonderi"
+  },
+  {
+   "input": "   ",
+   "output": "gonderi"
+  },
+  {
+   "input": "Sadece metin",
+   "output": "Sadece metin"
+  },
+  {
+   "input": "#a#b c #d",
+   "output": "c"
+  },
+  {
+   "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "output": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+ ],
+ "author_folder": [
+  {
+   "name": "Ad Soyad",
+   "sec_uid": "x",
+   "output": "Ad Soyad"
+  },
+  {
+   "name": "",
+   "sec_uid": "MS4wLjABAAAA6O7EZyfDRYXxJrUTpf91K3tmB4rBROkAw-nYMfld8ss",
+   "output": "MS4wLjABAAAA6O7E"
+  },
+  {
+   "name": "<>",
+   "sec_uid": "",
+   "output": "douyin"
+  },
+  {
+   "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "sec_uid": "s",
+   "output": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+ ]
+}

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
 from . import __version__
-from . import winbrowsers
+from . import i18n, winbrowsers
 from .paths import app_data_dir
 from .server import AppState, start_server
 
@@ -67,7 +67,7 @@ def _message_box(text: str) -> None:
     def show() -> None:
         try:
             import ctypes
-            ctypes.windll.user32.MessageBoxW(0, text, "Douyin İndirici", 0x40 | 0x40000)
+            ctypes.windll.user32.MessageBoxW(0, text, i18n.translate("ui.app_title"), 0x40 | 0x40000)
         except Exception:
             pass
 
@@ -95,13 +95,9 @@ def window_launchers(url: str) -> List[Tuple[str, Callable[[], Tuple[bool, Optio
             return False, None
 
     def download_then_open():
-        _message_box(
-            "Bilgisayarındaki Edge'in kurulumu bozuk görünüyor (yarım kalmış güncelleme olabilir).\n\n"
-            "Program kendi tarayıcısını indiriyor (yaklaşık 150 MB, sadece bu sefer). "
-            "Birkaç dakika içinde pencere kendiliğinden açılacak."
-        )
-        if not winbrowsers.install_bundled_chromium(lambda level, text: say(text)):
-            _message_box("Tarayıcı bileşeni indirilemedi. İnternet bağlantını kontrol edip programı yeniden aç.")
+        _message_box(i18n.translate("app.edge_broken_box"))
+        if not winbrowsers.install_bundled_chromium(lambda level, text: say(str(text))):
+            _message_box(i18n.translate("app.download_failed_box"))
             return False, None
         return with_exe(winbrowsers.bundled_chromium_exe, "chromium")()
 
@@ -134,7 +130,10 @@ def self_test() -> str:
     server = start_server(state)
     with urllib.request.urlopen(f"http://127.0.0.1:{state.port}/", timeout=5) as resp:
         html = resp.read().decode("utf-8")
-    assert "Douyin İndirici" in html, "arayüz yüklenemedi"
+    assert "data-i18n" in html, "UI did not load"
+    with urllib.request.urlopen(f"http://127.0.0.1:{state.port}/api/strings", timeout=5) as resp:
+        strings = json.loads(resp.read().decode("utf-8"))["strings"]
+    assert strings.get("ui.start"), "translations did not load"
 
     async def check_browser() -> str:
         os.environ.setdefault("DOUYIN_INDIRICI_HEADLESS", "1")
@@ -144,7 +143,7 @@ def self_test() -> str:
 
     name = asyncio.run(check_browser())
     server.shutdown()
-    say(f"SELF-TEST OK: arayüz + tarayıcı ({name})")
+    say(f"SELF-TEST OK: ui + browser ({name})")
     return name
 
 
@@ -168,7 +167,7 @@ def self_test_window() -> str:
                 time.sleep(0.5)
             if proc is not None and proc.poll() is None:
                 proc.kill()
-        raise RuntimeError("Arayüz penceresi hiçbir yolla açılamadı")
+        raise RuntimeError("UI window could not be opened in any way")
     finally:
         server.shutdown()
 
@@ -208,7 +207,7 @@ def main(argv=None) -> int:
         _instance_file().write_text(json.dumps({"port": state.port, "pid": os.getpid()}), encoding="utf-8")
     except OSError:
         pass
-    say(f"Douyin İndirici çalışıyor: {url}")
+    say(f"Douyin Indirici: {url}")
 
     launchers = [] if args.no_window else window_launchers(url)
     window: Optional[subprocess.Popen] = None
@@ -227,7 +226,7 @@ def main(argv=None) -> int:
         return False
 
     if not args.no_window and not next_window():
-        _message_box(f"Pencere açılamadı. Tarayıcında şu adresi aç: {url}")
+        _message_box(i18n.translate("app.window_failed_box", url=url))
         launched_at = time.monotonic()
     try:
         while True:

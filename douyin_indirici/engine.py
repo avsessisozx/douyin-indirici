@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from . import links
 from .browser import BrowserError, DouyinBrowser
+from .i18n import Msg, msg
 from .fetcher import Cancelled, existing_file, fetch, write_bytes, ext_from_content_type
 from .media import MediaFile, Post, author_folder, build_post
 from .paths import app_data_dir, clean_settings
@@ -56,14 +57,20 @@ class Engine:
         self.current_bytes = 0
         self.current_total = 0
         self.collecting = False
-        self.summary = ""
+        self.summary: Optional[Msg] = None
         self.started_at = 0.0
         self.logs: List[Dict[str, Any]] = []
         self.log_offset = 0
 
-    def log(self, level: str, text: str) -> None:
+    def log(self, level: str, message: Any) -> None:
+        """Kayda bir satır ekler. message bir Msg (çevrilir) ya da ham metin (hata ayrıntısı) olabilir."""
+        entry: Dict[str, Any] = {"t": time.strftime("%H:%M:%S"), "level": level}
+        if isinstance(message, Msg):
+            entry["msg"] = message.to_json()
+        else:
+            entry["text"] = str(message)
         with self._lock:
-            self.logs.append({"t": time.strftime("%H:%M:%S"), "level": level, "text": text})
+            self.logs.append(entry)
             if len(self.logs) > 2000:
                 drop = len(self.logs) - 1500
                 self.logs = self.logs[drop:]
@@ -91,22 +98,22 @@ class Engine:
                 "current": self.current,
                 "current_bytes": self.current_bytes,
                 "current_total": self.current_total,
-                "summary": self.summary,
+                "summary": self.summary.to_json() if self.summary else None,
                 "logs": self.logs[start:],
                 "log_next": self.log_offset + len(self.logs),
             }
 
     # ------------------------------------------------------------ kontrol
-    def start(self, job: Job) -> Optional[str]:
+    def start(self, job: Job) -> Optional[Msg]:
         with self._lock:
             if self.running:
-                return "Zaten bir indirme sürüyor."
+                return msg("engine.already_running")
         if job.mode != MODE_LOGIN:
             parsed = links.parse_link(job.link)
             if not parsed.ok:
                 return parsed.error
             if job.mode == MODE_SINGLE and parsed.kind == links.PROFILE:
-                return "Bu bir profil linki. Tek gönderi indirmek için videonun kendi linkini yapıştır ya da 'Profilin tamamı'nı seç."
+                return msg("engine.single_needs_post")
         logs_offset = self.log_offset + len(self.logs)
         self._reset()
         self.log_offset = logs_offset
@@ -121,7 +128,7 @@ class Engine:
 
     def stop(self) -> None:
         if self.running:
-            self.log("warn", "Durduruluyor…")
+            self.log("warn", msg("engine.stopping"))
             self._cancel.set()
 
     def wait(self, timeout: float = 10) -> None:
@@ -133,10 +140,10 @@ class Engine:
         try:
             asyncio.run(self._run(job))
         except Exception as exc:  # beklenmeyen hata — kullanıcıya göster
-            self.log("error", f"Beklenmeyen hata: {exc}")
+            self.log("error", msg("engine.unexpected", error=str(exc)))
             self.log("debug", traceback.format_exc())
             self.phase = "error"
-            self.summary = "Beklenmeyen bir hata oldu. Ayrıntılar aşağıdaki kayıtta."
+            self.summary = msg("engine.unexpected_summary")
         finally:
             self.running = False
             self.captcha = False
@@ -155,7 +162,7 @@ class Engine:
                 if job.mode == MODE_LOGIN:
                     await browser.login_session()
                     self.phase = "done"
-                    self.summary = "Tarayıcı kapatıldı. Giriş yaptıysan bilgilerin bir sonraki indirmede kullanılacak."
+                    self.summary = msg("engine.login_done")
                     self.log("ok", self.summary)
                     return
                 await self._download_job(browser, job, settings)
@@ -164,14 +171,14 @@ class Engine:
                 self._finish_stopped()
             else:
                 self.phase = "error"
-                self.summary = str(exc)
-                self.log("error", str(exc))
+                self.summary = exc.message
+                self.log("error", exc.message)
         except (asyncio.CancelledError, Cancelled):
             self._finish_stopped()
 
     def _finish_stopped(self) -> None:
         self.phase = "stopped"
-        self.summary = f"Durduruldu. {self.files_done} dosya indirildi."
+        self.summary = msg("engine.stopped", n=self.files_done)
         self.log("warn", self.summary)
 
     def _set_captcha(self, value: bool) -> None:
@@ -183,7 +190,7 @@ class Engine:
         try:
             out_root.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
-            raise BrowserError(f"İndirme klasörü oluşturulamadı: {out_root} ({exc})")
+            raise BrowserError(msg("engine.folder_failed", path=str(out_root), error=str(exc)))
 
         queue: asyncio.Queue = asyncio.Queue()
         downloads = DownloadPool(self, browser, out_root, settings, queue)
@@ -192,7 +199,7 @@ class Engine:
         try:
             if job.mode == MODE_SINGLE:
                 if parsed.kind == links.PROFILE:
-                    raise BrowserError("Kısa link bir profile açıldı. Profilin tamamını indirmek için 'Profilin tamamı'nı seç.")
+                    raise BrowserError(msg("engine.short_to_profile"))
                 self.phase = "collecting"
                 item = await browser.get_post(parsed.aweme_id, parsed.url)
                 self._enqueue(queue, [item], settings)
@@ -200,14 +207,14 @@ class Engine:
                 sec_uid = parsed.sec_uid
                 if parsed.kind == links.POST and not sec_uid:
                     self.phase = "collecting"
-                    self.log("info", "Gönderinin sahibi bulunuyor…")
+                    self.log("info", msg("engine.finding_owner"))
                     item = await browser.get_post(parsed.aweme_id, parsed.url)
                     sec_uid = str((item.get("author") or {}).get("sec_uid") or "")
                     if not sec_uid:
-                        raise BrowserError("Bu gönderinin sahibinin profili bulunamadı.")
+                        raise BrowserError(msg("engine.owner_not_found"))
                     name = str((item.get("author") or {}).get("nickname") or "")
                     if name:
-                        self.log("info", f"Profil: {name}")
+                        self.log("info", msg("engine.profile_name", name=name))
                 self.phase = "collecting"
                 self.collecting = True
                 result = await browser.collect_profile(
@@ -234,41 +241,32 @@ class Engine:
             self._finish_stopped()
             return
         self.phase = "done"
-        parts = [f"{self.files_done} dosya indirildi"]
-        if self.files_skipped:
-            parts.append(f"{self.files_skipped} dosya zaten vardı")
-        if self.files_failed:
-            parts.append(f"{self.files_failed} dosya inemedi")
-        if self.posts_skipped:
-            parts.append(f"{self.posts_skipped} gönderi seçimine uymadığı için atlandı")
-        self.summary = "Bitti: " + ", ".join(parts) + "."
+        self.summary = msg("summary", done=self.files_done, skipped=self.files_skipped,
+                           failed=self.files_failed, unmatched=self.posts_skipped)
         if self.files_done == 0 and self.files_skipped == 0:
             self.phase = "error" if self.files_failed or self.found_posts == 0 else "done"
         self.log("ok" if self.phase == "done" else "error", self.summary)
 
     def _report_profile(self, result) -> None:
         if result.reason == "private":
-            raise BrowserError("Bu hesap gizli (私密账号). Gizli hesapların gönderileri indirilemez.")
+            raise BrowserError(msg("engine.private"))
         if result.reason == "empty":
-            raise BrowserError("Bu profilde hiç gönderi yok.")
+            raise BrowserError(msg("engine.empty"))
         if result.reason == "stalled" and result.collected == 0:
-            raise BrowserError(
-                "Profilden gönderi listesi alınamadı. Douyin sayfası yüklenmemiş ya da düzeni değişmiş olabilir. "
-                "Tarayıcı penceresinde profil görünüyor muydu? Görünmüyorsa linki kontrol et."
-            )
+            raise BrowserError(msg("engine.no_list"))
         if result.reason == "login_wall":
             self.login_wall = True
-            shown = f" (profilde {result.reported_count} gönderi var)" if result.reported_count else ""
-            self.log(
-                "warn",
-                f"Douyin, giriş yapılmadan sadece {result.collected} gönderi gösterdi{shown}. "
-                "Hepsini indirmek istersen aşağıdaki 'Douyin'e giriş yap' düğmesiyle bir kez giriş yapıp tekrar başlat.",
-            )
+            if result.reported_count:
+                self.log("warn", msg("engine.login_wall_total", n=result.collected, total=result.reported_count))
+            else:
+                self.log("warn", msg("engine.login_wall", n=result.collected))
         elif result.reason == "limit":
-            self.log("info", f"İstenen sayıya ulaşıldı: {result.collected} gönderi.")
+            self.log("info", msg("engine.limit_reached", n=result.collected))
         elif result.reason in ("end", "stalled"):
-            total = f" / {result.reported_count}" if result.reported_count else ""
-            self.log("ok", f"Profil tarandı: {result.collected}{total} gönderi bulundu.")
+            if result.reported_count:
+                self.log("ok", msg("engine.profile_scanned_total", n=result.collected, total=result.reported_count))
+            else:
+                self.log("ok", msg("engine.profile_scanned", n=result.collected))
 
     def _enqueue(self, queue: asyncio.Queue, items: List[Dict[str, Any]], settings: Dict[str, Any]) -> None:
         for item in items:
@@ -280,7 +278,7 @@ class Engine:
                 self.author = post.author_name
             if post.skipped_reason:
                 self.posts_skipped += 1
-                self.log("skip", f"Atlandı ({post.skipped_reason}): {post.stem}")
+                self.log("skip", msg("engine.skipped_post", reason=post.skipped_reason, name=post.stem))
                 continue
             self.files_total += len(post.files)
             queue.put_nowait(post)
@@ -315,22 +313,26 @@ class DownloadPool:
         folder = self.out_root / author_folder(post.author_name or eng.author, post.author_sec_uid)
         if not eng.folder:
             eng.folder = str(folder)
-        ok_all = True
+        results = []
         for media in post.files:
             if eng._cancel.is_set():
                 return
-            ok_all &= await self._download_file(folder, media)
+            results.append(await self._download_file(folder, media))
         eng.posts_done += 1
-        if ok_all and post.files:
-            label = "resim" if post.is_gallery else "video"
-            eng.log("ok", f"İndirildi ({label}): {post.stem}")
+        if results and all(r != "failed" for r in results):
+            if any(r == "downloaded" for r in results):
+                key = "engine.downloaded_gallery" if post.is_gallery else "engine.downloaded_video"
+            else:
+                key = "engine.already_had"
+            eng.log("ok", msg(key, name=post.stem))
 
-    async def _download_file(self, folder: Path, media: MediaFile) -> bool:
+    async def _download_file(self, folder: Path, media: MediaFile) -> str:
+        """Sonuç: "downloaded", "skipped" (zaten vardı) ya da "failed"."""
         eng = self.engine
         stem_path = folder / Path(media.rel_stem)
         if existing_file(stem_path, media.ext):
             eng.files_skipped += 1
-            return True
+            return "skipped"
         eng.current = stem_path.name
         eng.current_bytes = 0
         eng.current_total = media.expected_size
@@ -354,9 +356,9 @@ class DownloadPool:
                     break
         if result.ok:
             eng.files_done += 1
-            return True
+            return "downloaded"
         if eng._cancel.is_set():
-            return False
+            return "failed"
         eng.files_failed += 1
-        eng.log("error", f"İnemedi: {stem_path.name} — {result.error}")
-        return False
+        eng.log("error", msg("engine.download_failed", name=stem_path.name, error=result.error or ""))
+        return "failed"

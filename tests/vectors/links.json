@@ -1,0 +1,324 @@
+{
+ "parse": [
+  {
+   "input": "https://www.douyin.com/user/MS4wLjABAAAA6O7EZyfDRYXxJrUTpf91K3tmB4rBROkAw-nYMfld8ss?from_tab_name=main",
+   "kind": "profile",
+   "url": "https://www.douyin.com/user/MS4wLjABAAAA6O7EZyfDRYXxJrUTpf91K3tmB4rBROkAw-nYMfld8ss",
+   "aweme_id": "",
+   "sec_uid": "MS4wLjABAAAA6O7EZyfDRYXxJrUTpf91K3tmB4rBROkAw-nYMfld8ss",
+   "error": null,
+   "describe": "link.profile_detected"
+  },
+  {
+   "input": "https://www.douyin.com/user/MS4wLjABAAAA6O7EZyfDRYXxJrUTpf91K3tmB4rBROkAw-nYMfld8ss",
+   "kind": "profile",
+   "url": "https://www.douyin.com/user/MS4wLjABAAAA6O7EZyfDRYXxJrUTpf91K3tmB4rBROkAw-nYMfld8ss",
+   "aweme_id": "",
+   "sec_uid": "MS4wLjABAAAA6O7EZyfDRYXxJrUTpf91K3tmB4rBROkAw-nYMfld8ss",
+   "error": null,
+   "describe": "link.profile_detected"
+  },
+  {
+   "input": "https://www.douyin.com/user/MS4wLjABAAAA6O7EZyfDRYXxJrUTpf91K3tmB4rBROkAw-nYMfld8ss?modal_id=7412345678901234567",
+   "kind": "post",
+   "url": "https://www.douyin.com/video/7412345678901234567",
+   "aweme_id": "7412345678901234567",
+   "sec_uid": "MS4wLjABAAAA6O7EZyfDRYXxJrUTpf91K3tmB4rBROkAw-nYMfld8ss",
+   "error": null,
+   "describe": "link.post_detected"
+  },
+  {
+   "input": "https://www.douyin.com/video/7412345678901234567",
+   "kind": "post",
+   "url": "https://www.douyin.com/video/7412345678901234567",
+   "aweme_id": "7412345678901234567",
+   "sec_uid": "",
+   "error": null,
+   "describe": "link.post_detected"
+  },
+  {
+   "input": "https://www.douyin.com/note/7412345678901234568",
+   "kind": "post",
+   "url": "https://www.douyin.com/note/7412345678901234568",
+   "aweme_id": "7412345678901234568",
+   "sec_uid": "",
+   "error": null,
+   "describe": "link.post_detected"
+  },
+  {
+   "input": "https://www.douyin.com/slides/7412345678901234568",
+   "kind": "post",
+   "url": "https://www.douyin.com/note/7412345678901234568",
+   "aweme_id": "7412345678901234568",
+   "sec_uid": "",
+   "error": null,
+   "describe": "link.post_detected"
+  },
+  {
+   "input": "https://www.douyin.com/?recommend=1&modal_id=7412345678901234569",
+   "kind": "post",
+   "url": "https://www.douyin.com/video/7412345678901234569",
+   "aweme_id": "7412345678901234569",
+   "sec_uid": "",
+   "error": null,
+   "describe": "link.post_detected"
+  },
+  {
+   "input": "https://www.douyin.com/jingxuan?modal_id=7412345678901234560",
+   "kind": "post",
+   "url": "https://www.douyin.com/video/7412345678901234560",
+   "aweme_id": "7412345678901234560",
+   "sec_uid": "",
+   "error": null,
+   "describe": "link.post_detected"
+  },
+  {
+   "input": "https://www.douyin.com/search/cat?aid=1&modal_id=7412345678901234561&type=general",
+   "kind": "post",
+   "url": "https://www.douyin.com/video/7412345678901234561",
+   "aweme_id": "7412345678901234561",
+   "sec_uid": "",
+   "error": null,
+   "describe": "link.post_detected"
+  },
+  {
+   "input": "www.douyin.com/video/7412345678901234567",
+   "kind": "post",
+   "url": "https://www.douyin.com/video/7412345678901234567",
+   "aweme_id": "7412345678901234567",
+   "sec_uid": "",
+   "error": null,
+   "describe": "link.post_detected"
+  },
+  {
+   "input": "douyin.com/video/7412345678901234567?previous_page=app",
+   "kind": "post",
+   "url": "https://www.douyin.com/video/7412345678901234567",
+   "aweme_id": "7412345678901234567",
+   "sec_uid": "",
+   "error": null,
+   "describe": "link.post_detected"
+  },
+  {
+   "input": "7.94 复制打开抖音，看看【某某的作品】风景很美 # 旅行 https://v.douyin.com/iABcDeF/ 8@5.com :9pm",
+   "kind": "short",
+   "url": "https://v.douyin.com/iABcDeF/",
+   "aweme_id": "",
+   "sec_uid": "",
+   "error": null,
+   "describe": "link.short_detected"
+  },
+  {
+   "input": "https://v.douyin.com/iABcDeF/",
+   "kind": "short",
+   "url": "https://v.douyin.com/iABcDeF/",
+   "aweme_id": "",
+   "sec_uid": "",
+   "error": null,
+   "describe": "link.short_detected"
+  },
+  {
+   "input": "https://v.douyin.com/",
+   "kind": null,
+   "url": "",
+   "aweme_id": "",
+   "sec_uid": "",
+   "error": "link.short_incomplete",
+   "describe": "link.short_incomplete"
+  },
+  {
+   "input": "https://www.iesdouyin.com/share/video/7412345678901234567/?region=CN",
+   "kind": "post",
+   "url": "https://www.douyin.com/video/7412345678901234567",
+   "aweme_id": "7412345678901234567",
+   "sec_uid": "",
+   "error": null,
+   "describe": "link.post_detected"
+  },
+  {
+   "input": "https://www.iesdouyin.com/share/user/MS4wLjABAAAA6O7EZyfDRYXxJrUTpf91K3tmB4rBROkAw-nYMfld8ss",
+   "kind": "profile",
+   "url": "https://www.douyin.com/user/MS4wLjABAAAA6O7EZyfDRYXxJrUTpf91K3tmB4rBROkAw-nYMfld8ss",
+   "aweme_id": "",
+   "sec_uid": "MS4wLjABAAAA6O7EZyfDRYXxJrUTpf91K3tmB4rBROkAw-nYMfld8ss",
+   "error": null,
+   "describe": "link.profile_detected"
+  },
+  {
+   "input": "7412345678901234567",
+   "kind": "post",
+   "url": "https://www.douyin.com/video/7412345678901234567",
+   "aweme_id": "7412345678901234567",
+   "sec_uid": "",
+   "error": null,
+   "describe": "link.post_detected"
+  },
+  {
+   "input": "",
+   "kind": null,
+   "url": "",
+   "aweme_id": "",
+   "sec_uid": "",
+   "error": "link.empty",
+   "describe": "link.empty"
+  },
+  {
+   "input": "   ",
+   "kind": null,
+   "url": "",
+   "aweme_id": "",
+   "sec_uid": "",
+   "error": "link.empty",
+   "describe": "link.empty"
+  },
+  {
+   "input": "merhaba",
+   "kind": null,
+   "url": "",
+   "aweme_id": "",
+   "sec_uid": "",
+   "error": "link.not_found",
+   "describe": "link.not_found"
+  },
+  {
+   "input": "https://www.tiktok.com/@x/video/1",
+   "kind": null,
+   "url": "",
+   "aweme_id": "",
+   "sec_uid": "",
+   "error": "link.tiktok",
+   "describe": "link.tiktok"
+  },
+  {
+   "input": "https://www.douyin.com/",
+   "kind": null,
+   "url": "",
+   "aweme_id": "",
+   "sec_uid": "",
+   "error": "link.no_target",
+   "describe": "link.no_target"
+  },
+  {
+   "input": "https://www.douyin.com/jingxuan",
+   "kind": null,
+   "url": "",
+   "aweme_id": "",
+   "sec_uid": "",
+   "error": "link.no_target",
+   "describe": "link.no_target"
+  },
+  {
+   "input": "https://live.douyin.com/123456",
+   "kind": null,
+   "url": "",
+   "aweme_id": "",
+   "sec_uid": "",
+   "error": "link.live",
+   "describe": "link.live"
+  },
+  {
+   "input": "https://www.douyin.com/follow/live/123456",
+   "kind": null,
+   "url": "",
+   "aweme_id": "",
+   "sec_uid": "",
+   "error": "link.live",
+   "describe": "link.live"
+  },
+  {
+   "input": "https://www.douyin.com/user/self",
+   "kind": null,
+   "url": "",
+   "aweme_id": "",
+   "sec_uid": "",
+   "error": "link.self",
+   "describe": "link.self"
+  },
+  {
+   "input": "https://www.douyin.com/user/self?modal_id=7412345678901234567",
+   "kind": "post",
+   "url": "https://www.douyin.com/video/7412345678901234567",
+   "aweme_id": "7412345678901234567",
+   "sec_uid": "",
+   "error": null,
+   "describe": "link.post_detected"
+  },
+  {
+   "input": "https://www.douyin.com/user/abc",
+   "kind": null,
+   "url": "",
+   "aweme_id": "",
+   "sec_uid": "",
+   "error": "link.profile_broken",
+   "describe": "link.profile_broken"
+  },
+  {
+   "input": "https://www.douyin.com/collection/7412345678901234567",
+   "kind": null,
+   "url": "",
+   "aweme_id": "",
+   "sec_uid": "",
+   "error": "link.collection",
+   "describe": "link.collection"
+  },
+  {
+   "input": "https://www.douyin.com/music/7412345678901234567",
+   "kind": null,
+   "url": "",
+   "aweme_id": "",
+   "sec_uid": "",
+   "error": "link.music",
+   "describe": "link.music"
+  },
+  {
+   "input": "https://www.douyin.com/discover?aweme_id=7412345678901234562",
+   "kind": "post",
+   "url": "https://www.douyin.com/video/7412345678901234562",
+   "aweme_id": "7412345678901234562",
+   "sec_uid": "",
+   "error": null,
+   "describe": "link.post_detected"
+  },
+  {
+   "input": "https://www.douyin.com/video/7412345678901234567).",
+   "kind": "post",
+   "url": "https://www.douyin.com/video/7412345678901234567",
+   "aweme_id": "7412345678901234567",
+   "sec_uid": "",
+   "error": null,
+   "describe": "link.post_detected"
+  }
+ ],
+ "final_url": [
+  {
+   "input": "https://www.douyin.com/video/7412345678901234567?previous_page=x",
+   "kind": "post",
+   "aweme_id": "7412345678901234567",
+   "sec_uid": ""
+  },
+  {
+   "input": "https://www.douyin.com/note/7412345678901234567",
+   "kind": "post",
+   "aweme_id": "7412345678901234567",
+   "sec_uid": ""
+  },
+  {
+   "input": "https://www.iesdouyin.com/share/user/MS4wLjABAAAA6O7EZyfDRYXxJrUTpf91K3tmB4rBROkAw-nYMfld8ss?x=1",
+   "kind": "profile",
+   "aweme_id": "",
+   "sec_uid": "MS4wLjABAAAA6O7EZyfDRYXxJrUTpf91K3tmB4rBROkAw-nYMfld8ss"
+  },
+  {
+   "input": "https://www.douyin.com/user/MS4wLjABAAAA6O7EZyfDRYXxJrUTpf91K3tmB4rBROkAw-nYMfld8ss",
+   "kind": "profile",
+   "aweme_id": "",
+   "sec_uid": "MS4wLjABAAAA6O7EZyfDRYXxJrUTpf91K3tmB4rBROkAw-nYMfld8ss"
+  },
+  {
+   "input": "https://www.douyin.com/",
+   "kind": null,
+   "aweme_id": "",
+   "sec_uid": ""
+  }
+ ]
+}

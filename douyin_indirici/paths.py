@@ -60,6 +60,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "quality": QUALITY_HIGHEST,
     "compat": True,
     "limit": 0,
+    "lang": "auto",
 }
 
 
@@ -92,6 +93,9 @@ def clean_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     except (TypeError, ValueError):
         limit = 0
     out["limit"] = max(0, min(limit, 100000))
+    lang = str(settings.get("lang") or "auto")
+    from .i18n import available_languages
+    out["lang"] = lang if lang in {item["code"] for item in available_languages()} else "auto"
     return out
 
 

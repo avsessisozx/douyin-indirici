@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
+from .i18n import Msg, msg
+
 PROFILE = "profile"
 POST = "post"
 SHORT = "short"
@@ -35,20 +37,20 @@ class ParsedLink:
     url: str = ""
     aweme_id: str = ""
     sec_uid: str = ""
-    error: str = ""
+    error: Optional[Msg] = None
 
     @property
     def ok(self) -> bool:
         return self.kind is not None
 
-    def describe(self) -> str:
+    def describe(self) -> Msg:
         if self.kind == PROFILE:
-            return "Profil linki algılandı."
+            return msg("link.profile_detected")
         if self.kind == POST:
-            return "Tek gönderi linki algılandı."
+            return msg("link.post_detected")
         if self.kind == SHORT:
-            return "Kısa link algılandı. Açıldığında video mu profil mi olduğu anlaşılacak."
-        return self.error
+            return msg("link.short_detected")
+        return self.error or msg("link.no_target")
 
 
 def _first_query(qs: dict, key: str) -> str:
@@ -60,7 +62,7 @@ def _first_query(qs: dict, key: str) -> str:
 def parse_link(text: str) -> ParsedLink:
     text = (text or "").strip()
     if not text:
-        return ParsedLink(None, error="Önce bir Douyin linki yapıştır.")
+        return ParsedLink(None, error=msg("link.empty"))
 
     if _ID_RE.match(text):
         return ParsedLink(POST, url=f"https://www.douyin.com/video/{text}", aweme_id=text)
@@ -68,8 +70,8 @@ def parse_link(text: str) -> ParsedLink:
     match = _URL_RE.search(text)
     if not match:
         if "tiktok.com" in text.lower():
-            return ParsedLink(None, error="Bu bir TikTok linki. Bu program sadece Douyin (douyin.com) linkleriyle çalışır.")
-        return ParsedLink(None, error="Metinde Douyin linki bulunamadı. Adres çubuğundaki linki kopyalayıp yapıştır.")
+            return ParsedLink(None, error=msg("link.tiktok"))
+        return ParsedLink(None, error=msg("link.not_found"))
 
     url = match.group(0).rstrip(".,;)]}")
     if not url.lower().startswith("http"):
@@ -81,11 +83,11 @@ def parse_link(text: str) -> ParsedLink:
 
     if host in ("v.douyin.com", "v.iesdouyin.com"):
         if len(path.strip("/")) < 3:
-            return ParsedLink(None, error="Kısa link eksik görünüyor. Linkin tamamını kopyala.")
+            return ParsedLink(None, error=msg("link.short_incomplete"))
         return ParsedLink(SHORT, url=url)
 
     if host == "live.douyin.com" or "/live/" in path or path.startswith("/follow/live"):
-        return ParsedLink(None, error="Bu bir canlı yayın linki. Canlı yayınlar indirilemiyor.")
+        return ParsedLink(None, error=msg("link.live"))
 
     modal_id = _first_query(qs, "modal_id")
     if modal_id and not modal_id.isdigit():
@@ -97,9 +99,9 @@ def parse_link(text: str) -> ParsedLink:
         if sec_uid == "self":
             if modal_id:
                 return ParsedLink(POST, url=f"https://www.douyin.com/video/{modal_id}", aweme_id=modal_id)
-            return ParsedLink(None, error="Bu senin kendi profil sayfan. İndirmek istediğin kişinin profil linkini yapıştır.")
+            return ParsedLink(None, error=msg("link.self"))
         if not _SEC_UID_RE.match(sec_uid):
-            return ParsedLink(None, error="Profil linki eksik ya da bozuk görünüyor. Linkin tamamını kopyala.")
+            return ParsedLink(None, error=msg("link.profile_broken"))
         if modal_id:
             return ParsedLink(POST, url=f"https://www.douyin.com/video/{modal_id}", aweme_id=modal_id, sec_uid=sec_uid)
         return ParsedLink(PROFILE, url=f"https://www.douyin.com/user/{sec_uid}", sec_uid=sec_uid)
@@ -119,14 +121,11 @@ def parse_link(text: str) -> ParsedLink:
             return ParsedLink(POST, url=f"https://www.douyin.com/video/{value}", aweme_id=value)
 
     if re.match(r"^/(?:collection|mix)/", path):
-        return ParsedLink(None, error="Bu bir koleksiyon (合集) linki. Şimdilik profil ve tek gönderi linkleri destekleniyor.")
+        return ParsedLink(None, error=msg("link.collection"))
     if path.startswith("/music/"):
-        return ParsedLink(None, error="Bu bir müzik sayfası linki. Şimdilik profil ve tek gönderi linkleri destekleniyor.")
+        return ParsedLink(None, error=msg("link.music"))
 
-    return ParsedLink(
-        None,
-        error="Bu linkte belirli bir video ya da profil yok. Videoyu ya da profili açıp adres çubuğundaki linki kopyala.",
-    )
+    return ParsedLink(None, error=msg("link.no_target"))
 
 
 _POST_PATH_RE = re.compile(r"/(?:share/)?(?:video|note|slides|gallery)/(\d+)")
@@ -144,4 +143,4 @@ def classify_final_url(url: str) -> ParsedLink:
     m = _USER_PATH_RE.search(url)
     if m:
         return ParsedLink(PROFILE, url=url, sec_uid=m.group(1))
-    return ParsedLink(None, error="Kısa link açıldı ama bir video ya da profile gitmedi.")
+    return ParsedLink(None, error=msg("link.short_bad"))

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="tr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Douyin İndirici</title>
+<title>Douyin</title>
 <style>
 :root {
   --bg: #e9edf2;
@@ -149,38 +149,44 @@ summary { cursor: pointer; color: var(--muted); font-size: 14px; }
   .folder-row { flex-wrap: wrap; }
   .folder-row input { flex-basis: 100%; }
 }
+.foot select { height: 30px; font-size: 13px; padding: 0 6px; }
+.foot label { display: inline-flex; gap: 6px; align-items: center; }
+.folder-static { padding: 9px 12px; border-radius: 9px; background: var(--bg); border: 1.5px solid var(--line); font-size: 14px; }
+.is-mobile .desktop-only { display: none !important; }
+.is-desktop .mobile-only { display: none !important; }
+body.loading main { visibility: hidden; }
 </style>
 </head>
-<body>
+<body class="loading">
 <main>
-  <h1>Douyin İndirici</h1>
-  <p class="lead">Douyin'deki videoları ve resimleri bilgisayarına indirir. Hesap gerekmez.</p>
+  <h1 data-i18n="ui.app_title"></h1>
+  <p class="lead" data-i18n="ui.lead"></p>
 
   <section class="panel step" id="step1">
     <div class="step-num">1</div>
     <div>
-      <h2>Linki yapıştır</h2>
+      <h2 data-i18n="ui.step1_title"></h2>
       <div class="link-row">
-        <input id="link" type="text" autocomplete="off" spellcheck="false"
-               placeholder="https://www.douyin.com/user/… ya da /video/…" aria-describedby="detect">
-        <button class="btn" id="paste" type="button">Yapıştır</button>
+        <input id="link" type="text" autocomplete="off" spellcheck="false" inputmode="url"
+               data-i18n-placeholder="ui.link_placeholder" aria-describedby="detect">
+        <button class="btn" id="paste" type="button" data-i18n="ui.paste"></button>
       </div>
-      <div class="detect" id="detect" aria-live="polite">Profil linki ya da tek video/gönderi linki olabilir. Uygulamadan kopyalanan paylaşım metni de olur.</div>
+      <div class="detect" id="detect" aria-live="polite"></div>
     </div>
   </section>
 
   <section class="panel step" id="step2">
     <div class="step-num">2</div>
     <div>
-      <h2>Ne indirilsin?</h2>
-      <div class="choices" role="radiogroup" aria-label="Ne indirilsin">
+      <h2 id="step2-title" data-i18n="ui.step2_title"></h2>
+      <div class="choices" role="radiogroup" aria-labelledby="step2-title">
         <div class="choice">
           <input type="radio" name="mode" id="mode-single" value="single">
-          <label for="mode-single"><b>Sadece bu gönderi</b><span>Tek video ya da tek resim albümü</span></label>
+          <label for="mode-single"><b data-i18n="ui.mode_single_title"></b><span data-i18n="ui.mode_single_desc"></span></label>
         </div>
         <div class="choice">
           <input type="radio" name="mode" id="mode-profile" value="profile">
-          <label for="mode-profile"><b>Profilin tamamı</b><span id="profile-hint">Bu kişinin bütün gönderileri, toplu olarak</span></label>
+          <label for="mode-profile"><b data-i18n="ui.mode_profile_title"></b><span id="profile-hint"></span></label>
         </div>
       </div>
     </div>
@@ -189,80 +195,84 @@ summary { cursor: pointer; color: var(--muted); font-size: 14px; }
   <section class="panel step" id="step3">
     <div class="step-num">3</div>
     <div>
-      <h2>Ayarlar</h2>
+      <h2 data-i18n="ui.step3_title"></h2>
       <div class="rows">
         <div class="row" id="row-content">
-          <span class="lbl" id="lbl-content">İçerik</span>
+          <span class="lbl" id="lbl-content" data-i18n="ui.content_label"></span>
           <div class="seg" role="radiogroup" aria-labelledby="lbl-content">
-            <input type="radio" name="content" id="c-all" value="all"><label for="c-all">Video ve resim</label>
-            <input type="radio" name="content" id="c-video" value="video"><label for="c-video">Sadece video</label>
-            <input type="radio" name="content" id="c-image" value="image"><label for="c-image">Sadece resim</label>
+            <input type="radio" name="content" id="c-all" value="all"><label for="c-all" data-i18n="ui.content_all"></label>
+            <input type="radio" name="content" id="c-video" value="video"><label for="c-video" data-i18n="ui.content_video"></label>
+            <input type="radio" name="content" id="c-image" value="image"><label for="c-image" data-i18n="ui.content_image"></label>
           </div>
         </div>
         <div class="row" id="row-limit">
-          <label class="lbl" for="limit">Kaç gönderi</label>
+          <label class="lbl" for="limit" data-i18n="ui.limit_label"></label>
           <div>
             <select id="limit">
-              <option value="0">Hepsi</option>
-              <option value="10">En yeni 10</option>
-              <option value="20">En yeni 20</option>
-              <option value="50">En yeni 50</option>
-              <option value="100">En yeni 100</option>
+              <option value="0" data-i18n="ui.limit_all"></option>
+              <option value="10" data-i18n="ui.limit_n" data-n="10"></option>
+              <option value="20" data-i18n="ui.limit_n" data-n="20"></option>
+              <option value="50" data-i18n="ui.limit_n" data-n="50"></option>
+              <option value="100" data-i18n="ui.limit_n" data-n="100"></option>
             </select>
           </div>
         </div>
         <div class="row">
-          <label class="lbl" for="quality">Video kalitesi</label>
+          <label class="lbl" for="quality" data-i18n="ui.quality_label"></label>
           <div>
             <select id="quality">
-              <option value="highest">En yüksek</option>
+              <option value="highest" data-i18n="ui.quality_highest"></option>
               <option value="1080p">1080p</option>
               <option value="720p">720p</option>
               <option value="540p">540p</option>
-              <option value="lowest">En düşük (az yer kaplar)</option>
+              <option value="lowest" data-i18n="ui.quality_lowest"></option>
             </select>
           </div>
         </div>
         <div class="row">
           <span class="lbl"></span>
           <label class="check"><input type="checkbox" id="compat">
-            <span>Her oynatıcıda açılsın
-              <small>Videoları H.264 biçiminde indirir. Kapatırsan bazı videolar daha küçük iner ama Windows'ta açmak için ek bileşen gerekebilir.</small>
+            <span><span data-i18n="ui.compat_title"></span>
+              <small data-i18n="ui.compat_desc"></small>
             </span>
           </label>
         </div>
         <div class="row">
-          <label class="lbl" for="outdir">Kayıt klasörü</label>
-          <div class="folder-row">
+          <label class="lbl" for="outdir" data-i18n="ui.folder_label"></label>
+          <div class="folder-row desktop-only">
             <input id="outdir" type="text" spellcheck="false">
-            <button class="btn" id="choose" type="button">Değiştir</button>
-            <button class="btn" id="openout" type="button">Aç</button>
+            <button class="btn" id="choose" type="button" data-i18n="ui.folder_change"></button>
+            <button class="btn" id="openout" type="button" data-i18n="ui.folder_open"></button>
           </div>
+          <div class="folder-static mobile-only" data-i18n="ui.folder_mobile_value"></div>
         </div>
       </div>
     </div>
   </section>
 
-  <button class="start" id="start" type="button">İndirmeyi başlat</button>
+  <button class="start" id="start" type="button" data-i18n="ui.start"></button>
   <div class="form-error" id="form-error" role="alert"></div>
 
   <section class="panel" id="progress" hidden aria-live="polite">
-    <p class="status" id="status">Hazırlanıyor…</p>
+    <p class="status" id="status"></p>
     <p class="sub" id="sub"></p>
     <div class="bar" id="bar"><i></i></div>
     <div class="counts" id="counts"></div>
     <div id="notes"></div>
     <div class="actions" id="done-actions" hidden>
-      <button class="btn" id="open-result" type="button">İndirilenleri aç</button>
+      <button class="btn" id="open-result" type="button"></button>
     </div>
     <details id="details">
-      <summary>Ayrıntılar</summary>
+      <summary data-i18n="ui.details"></summary>
       <div class="log" id="log"></div>
     </details>
   </section>
 
   <div class="foot">
-    <button class="linklike" id="login" type="button">Douyin'e giriş yap (isteğe bağlı)</button>
+    <button class="linklike" id="login" type="button" data-i18n="ui.login_link"></button>
+    <label><span data-i18n="ui.language_label"></span>
+      <select id="lang" aria-label="Language"></select>
+    </label>
     <span id="version"></span>
   </div>
 </main>
@@ -270,27 +280,96 @@ summary { cursor: pointer; color: var(--muted); font-size: 14px; }
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const api = async (path, body) => {
-    const res = await fetch(path, body === undefined ? {} : {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'İstek başarısız oldu.');
-    return data;
-  };
 
-  let linkKind = null, hasOwner = false, running = false, logNext = 0, lastFolder = '';
-  let settingsLoaded = false, parseTimer = null, parseSeq = 0, lastPhase = '';
+  // ---------------- köprü: Windows'ta yerel sunucu, Android'de uygulamanın kendisi
+  const bridge = window.DouyinApp;
+  async function api(path, body) {
+    let status, data;
+    if (bridge) {
+      const raw = bridge.call(path, body === undefined ? '' : JSON.stringify(body));
+      const res = JSON.parse(raw);
+      status = res.status; data = res.body || {};
+    } else {
+      const res = await fetch(path, body === undefined ? {} : {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      });
+      status = res.status;
+      data = await res.json().catch(() => ({}));
+    }
+    if (status >= 400) {
+      const err = new Error('request failed');
+      err.msg = data.error;
+      throw err;
+    }
+    return data;
+  }
+
+  // ---------------- çeviri
+  let S = {}, platform = 'desktop';
+  const t = (key, params) => {
+    if (key === 'summary') return summaryText(params || {});
+    let text = S[key];
+    if (text === undefined) text = key;
+    return text.replace(/\{(\w+)\}/g, (m, name) => {
+      if (!params || !(name in params)) return m;
+      const v = params[name];
+      return (v && typeof v === 'object') ? renderMsg(v) : String(v);
+    });
+  };
+  function summaryText(p) {
+    const parts = [t('summary.done', { n: p.done || 0 })];
+    if (p.skipped) parts.push(t('summary.skipped', { n: p.skipped }));
+    if (p.failed) parts.push(t('summary.failed', { n: p.failed }));
+    if (p.unmatched) parts.push(t('summary.unmatched', { n: p.unmatched }));
+    return t('summary.wrap', { parts: parts.join(', ') });
+  }
+  function renderMsg(m) {
+    if (!m) return '';
+    if (typeof m === 'string') return m;
+    return t(m.key, m.params || {});
+  }
+  const pick = (base) => t(base + (platform === 'mobile' ? '_mobile' : '_desktop'));
+  const errText = (e) => e && e.msg ? renderMsg(e.msg) : String(e && e.message || e);
+
+  function applyStatic() {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      el.textContent = t(el.dataset.i18n, el.dataset.n ? { n: el.dataset.n } : undefined);
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = t(el.dataset.i18nPlaceholder); });
+    document.title = t('ui.app_title');
+    document.body.classList.toggle('is-mobile', platform === 'mobile');
+    document.body.classList.toggle('is-desktop', platform !== 'mobile');
+    $('open-result').textContent = pick('ui.open_result');
+  }
+  async function loadStrings() {
+    const r = await api('/api/strings');
+    S = r.strings || {};
+    platform = r.platform || 'desktop';
+    document.documentElement.lang = r.lang || 'en';
+    const sel = $('lang');
+    sel.textContent = '';
+    const auto = document.createElement('option'); auto.value = 'auto'; auto.textContent = t('ui.language_auto'); sel.appendChild(auto);
+    for (const l of r.languages || []) { const o = document.createElement('option'); o.value = l.code; o.textContent = l.name; sel.appendChild(o); }
+    sel.value = r.setting || 'auto';
+    applyStatic();
+    renderDetect();
+    updateModeRows();
+    renderLog();
+    if (lastState) render(lastState, true);
+  }
+
+  let linkKind = null, running = false, logNext = 0, lastFolder = '', lastState = null;
+  let settingsLoaded = false, parseTimer = null, parseSeq = 0, lastPhase = '', detectMsg = null, detectClass = '';
 
   // ---------------- link algılama
   const detect = $('detect');
+  function renderDetect() {
+    detect.className = 'detect ' + detectClass;
+    detect.textContent = detectMsg ? renderMsg(detectMsg) : t('ui.detect_hint');
+  }
   function setModeAvailability() {
     const single = $('mode-single'), profile = $('mode-profile');
     single.disabled = linkKind === 'profile';
-    profile.disabled = false;
-    $('profile-hint').textContent = (linkKind === 'post')
-      ? 'Bu gönderiyi paylaşan kişinin bütün gönderileri'
-      : 'Bu kişinin bütün gönderileri, toplu olarak';
     if (linkKind === 'profile') profile.checked = true;
     else if ((linkKind === 'post' || linkKind === 'short') && !single.checked && !profile.checked) single.checked = true;
     if (single.disabled && single.checked) profile.checked = true;
@@ -300,42 +379,45 @@ summary { cursor: pointer; color: var(--muted); font-size: 14px; }
     const isProfile = $('mode-profile').checked;
     $('row-content').hidden = !isProfile;
     $('row-limit').hidden = !isProfile;
+    $('profile-hint').textContent = t(linkKind === 'post' ? 'ui.mode_profile_desc_owner' : 'ui.mode_profile_desc');
     $('step2').classList.toggle('done', $('mode-single').checked || isProfile);
   }
   async function parseLink() {
     const value = $('link').value.trim();
     const seq = ++parseSeq;
     if (!value) {
-      linkKind = null;
-      detect.className = 'detect';
-      detect.textContent = 'Profil linki ya da tek video/gönderi linki olabilir. Uygulamadan kopyalanan paylaşım metni de olur.';
+      linkKind = null; detectMsg = null; detectClass = '';
+      renderDetect();
       $('step1').classList.remove('done');
+      updateModeRows();
       return;
     }
     try {
       const r = await api('/api/parse', { link: value });
       if (seq !== parseSeq) return;
       linkKind = r.ok ? r.kind : null;
-      hasOwner = r.has_owner;
-      detect.className = 'detect ' + (r.ok ? 'ok' : 'err');
-      detect.textContent = r.message;
+      detectMsg = r.message; detectClass = r.ok ? 'ok' : 'err';
+      renderDetect();
       $('step1').classList.toggle('done', !!r.ok);
       setModeAvailability();
     } catch (e) {
-      detect.className = 'detect err';
-      detect.textContent = e.message;
+      detectMsg = e.msg || String(e); detectClass = 'err';
+      renderDetect();
     }
   }
+  window.douyinSetLink = (text) => { $('link').value = text; parseLink(); };
   $('link').addEventListener('input', () => { clearTimeout(parseTimer); parseTimer = setTimeout(parseLink, 200); });
   $('link').addEventListener('keydown', (e) => { if (e.key === 'Enter') startOrStop(); });
   $('paste').addEventListener('click', async () => {
+    let text = '';
     try {
-      const text = await navigator.clipboard.readText();
-      if (text) { $('link').value = text.trim(); parseLink(); return; }
+      if (bridge) text = (await api('/api/clipboard')).text || '';
+      else text = await navigator.clipboard.readText();
     } catch (e) { /* izin yoksa elle yapıştırma */ }
+    if (text) { $('link').value = text.trim(); parseLink(); return; }
     $('link').focus();
-    detect.className = 'detect';
-    detect.textContent = 'Kutuya tıklayıp Ctrl+V ile yapıştır.';
+    detectMsg = { key: platform === 'mobile' ? 'ui.paste_hint_mobile' : 'ui.paste_hint_desktop' }; detectClass = '';
+    renderDetect();
   });
   document.querySelectorAll('input[name=mode]').forEach(el => el.addEventListener('change', updateModeRows));
 
@@ -348,6 +430,7 @@ summary { cursor: pointer; color: var(--muted); font-size: 14px; }
       quality: $('quality').value,
       compat: $('compat').checked,
       out_dir: $('outdir').value.trim(),
+      lang: $('lang').value || 'auto',
     };
   }
   function applySettings(s) {
@@ -357,40 +440,41 @@ summary { cursor: pointer; color: var(--muted); font-size: 14px; }
     if (!$('limit').value) $('limit').value = '0';
     $('quality').value = s.quality;
     $('compat').checked = !!s.compat;
-    if (document.activeElement !== $('outdir')) $('outdir').value = s.out_dir;
+    if (document.activeElement !== $('outdir')) $('outdir').value = s.out_dir || '';
   }
   const saveSettings = () => api('/api/settings', readSettings()).then(r => applySettings(r.settings)).catch(() => {});
   ['limit', 'quality', 'compat', 'outdir'].forEach(id => $(id).addEventListener('change', saveSettings));
   document.querySelectorAll('input[name=content]').forEach(el => el.addEventListener('change', saveSettings));
+  $('lang').addEventListener('change', async () => { await saveSettings(); await loadStrings(); });
 
   $('choose').addEventListener('click', async () => {
     $('choose').disabled = true;
     try { const r = await api('/api/choose-folder', {}); applySettings(r.settings); }
-    catch (e) { $('form-error').textContent = e.message; }
+    catch (e) { $('form-error').textContent = errText(e); }
     finally { $('choose').disabled = running; }
   });
-  $('openout').addEventListener('click', () => api('/api/open-folder', { path: $('outdir').value.trim() }).catch(e => { $('form-error').textContent = e.message; }));
-  $('open-result').addEventListener('click', () => api('/api/open-folder', { path: lastFolder || $('outdir').value.trim() }).catch(() => {}));
+  $('openout').addEventListener('click', () => api('/api/open-folder', { path: $('outdir').value.trim() }).catch(e => { $('form-error').textContent = errText(e); }));
+  $('open-result').addEventListener('click', () => api('/api/open-folder', { path: lastFolder || $('outdir').value.trim() }).catch(e => { $('form-error').textContent = errText(e); }));
 
   // ---------------- başlat / durdur
   async function startOrStop() {
     $('form-error').textContent = '';
     if (running) { api('/api/stop', {}).catch(() => {}); return; }
-    if (!$('link').value.trim()) { $('form-error').textContent = 'Önce bir Douyin linki yapıştır.'; $('link').focus(); return; }
+    if (!$('link').value.trim()) { $('form-error').textContent = t('ui.form_need_link'); $('link').focus(); return; }
     await parseLink();
     if (!linkKind) { $('form-error').textContent = detect.textContent; $('link').focus(); return; }
     const mode = document.querySelector('input[name=mode]:checked');
-    if (!mode) { $('form-error').textContent = 'Ne indirileceğini seç: sadece bu gönderi mi, profilin tamamı mı?'; return; }
+    if (!mode) { $('form-error').textContent = t('ui.form_need_mode'); return; }
     try {
       $('start').disabled = true;
       await api('/api/start', { link: $('link').value.trim(), mode: mode.value, settings: readSettings() });
-      $('log').textContent = '';
+      clearLog();
       $('progress').hidden = false;
       const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       $('progress').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
       poll(true);
     } catch (e) {
-      $('form-error').textContent = e.message;
+      $('form-error').textContent = errText(e);
     } finally {
       $('start').disabled = false;
     }
@@ -398,24 +482,25 @@ summary { cursor: pointer; color: var(--muted); font-size: 14px; }
   $('start').addEventListener('click', startOrStop);
   $('login').addEventListener('click', async () => {
     $('form-error').textContent = '';
-    try { await api('/api/login', {}); $('progress').hidden = false; poll(true); }
-    catch (e) { $('form-error').textContent = e.message; }
+    try { await api('/api/login', {}); clearLog(); $('progress').hidden = false; poll(true); }
+    catch (e) { $('form-error').textContent = errText(e); }
   });
 
   // ---------------- durum
   const fmtMB = (b) => (b / 1048576).toFixed(b > 104857600 ? 0 : 1) + ' MB';
-  function note(kind, html) { const d = document.createElement('div'); d.className = 'note ' + kind; d.innerHTML = html; return d; }
-  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+  function note(kind, nodes) { const d = document.createElement('div'); d.className = 'note ' + kind; for (const n of nodes) d.appendChild(n); return d; }
+  function el(tag, text) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; return e; }
 
-  function render(s) {
+  function render(s, relabelOnly) {
+    lastState = s;
     running = s.running;
-    $('start').textContent = running ? 'Durdur' : 'İndirmeyi başlat';
+    $('start').textContent = t(running ? 'ui.stop' : 'ui.start');
     $('start').classList.toggle('stop', running);
-    ['link', 'paste', 'choose', 'outdir', 'login'].forEach(id => { $(id).disabled = running; });
-    document.querySelectorAll('#step2 input, #step3 input, #step3 select').forEach(el => {
-      el.disabled = running || (el.id === 'mode-single' && linkKind === 'profile');
+    ['link', 'paste', 'choose', 'outdir', 'login', 'lang'].forEach(id => { $(id).disabled = running; });
+    document.querySelectorAll('#step2 input, #step3 input, #step3 select').forEach(e => {
+      e.disabled = running || (e.id === 'mode-single' && linkKind === 'profile');
     });
-    if (s.version) $('version').textContent = 'Sürüm ' + s.version;
+    if (s.version) $('version').textContent = t('ui.version', { v: s.version });
     if (s.settings && !settingsLoaded) { applySettings(s.settings); settingsLoaded = true; }
 
     if (s.phase === 'idle') return;
@@ -426,28 +511,24 @@ summary { cursor: pointer; color: var(--muted); font-size: 14px; }
     let status = '', sub = '', pct = null;
     const who = s.author ? `${s.author}: ` : '';
     if (s.mode === 'login') {
-      status = running ? 'Douyin tarayıcıda açık' : 'Tarayıcı kapatıldı';
-      sub = running ? 'Açılan pencerede giriş yapabilirsin. İşin bitince o pencereyi kapat.' : (s.summary || '');
+      status = t(running ? 'ui.status_login_open' : 'ui.status_login_closed');
+      sub = running ? pick('ui.sub_login_open') : renderMsg(s.summary);
     } else if (s.phase === 'starting') {
-      status = 'Tarayıcı açılıyor…';
-      sub = 'İlk açılış birkaç saniye sürebilir.';
+      status = t('ui.status_starting');
+      sub = t('ui.sub_starting');
     } else if (running) {
-      if (s.collecting) {
-        status = `${who}${s.found_posts} gönderi bulundu, taranıyor…`;
-      } else if (s.phase === 'collecting') {
-        status = 'Gönderi bilgisi alınıyor…';
-      } else {
-        status = `${who}${finished} / ${total} dosya`;
-      }
+      if (s.collecting) status = t('ui.status_scanning', { who, n: s.found_posts });
+      else if (s.phase === 'collecting') status = t('ui.status_fetching_post');
+      else status = t('ui.status_progress', { who, done: finished, total });
       if (total > 0) pct = Math.min(100, finished / total * 100);
       if (s.current) {
-        sub = `İniyor: ${s.current}` + (s.current_total ? ` (${fmtMB(s.current_bytes)} / ${fmtMB(s.current_total)})` : (s.current_bytes ? ` (${fmtMB(s.current_bytes)})` : ''));
+        sub = t('ui.sub_downloading', { name: s.current }) + (s.current_total ? ` (${fmtMB(s.current_bytes)} / ${fmtMB(s.current_total)})` : (s.current_bytes ? ` (${fmtMB(s.current_bytes)})` : ''));
       } else {
-        sub = s.collecting ? 'Bulunan gönderiler sırayla iniyor. Sayfa kendiliğinden kayıyor.' : '';
+        sub = s.collecting ? t('ui.sub_collecting') : '';
       }
     } else {
-      status = s.phase === 'done' ? 'İndirme tamamlandı' : s.phase === 'stopped' ? 'Durduruldu' : 'İndirme tamamlanamadı';
-      sub = s.summary || '';
+      status = t(s.phase === 'done' ? 'ui.status_done' : s.phase === 'stopped' ? 'ui.status_stopped' : 'ui.status_failed');
+      sub = renderMsg(s.summary);
       pct = s.phase === 'done' ? 100 : (total ? finished / total * 100 : 0);
     }
     $('status').textContent = status;
@@ -456,58 +537,75 @@ summary { cursor: pointer; color: var(--muted); font-size: 14px; }
     bar.classList.toggle('indet', running && pct === null);
     bar.firstElementChild.style.width = (pct === null ? 0 : pct) + '%';
 
-    const counts = [];
+    const counts = $('counts');
+    counts.textContent = '';
     if (s.mode !== 'login') {
-      counts.push(`Bulunan gönderi <b>${s.found_posts}</b>`);
-      counts.push(`İnen dosya <b>${s.files_done}</b>`);
-      if (s.files_skipped) counts.push(`Zaten vardı <b>${s.files_skipped}</b>`);
-      if (s.posts_skipped) counts.push(`Seçime uymadı <b>${s.posts_skipped}</b>`);
-      if (s.files_failed) counts.push(`İnemedi <b>${s.files_failed}</b>`);
+      const add = (key, n) => { const sp = el('span', t(key) + ' '); sp.appendChild(el('b', String(n))); counts.appendChild(sp); };
+      add('ui.count_found', s.found_posts);
+      add('ui.count_done', s.files_done);
+      if (s.files_skipped) add('ui.count_skipped', s.files_skipped);
+      if (s.posts_skipped) add('ui.count_unmatched', s.posts_skipped);
+      if (s.files_failed) add('ui.count_failed', s.files_failed);
     }
-    $('counts').innerHTML = counts.map(c => `<span>${c}</span>`).join('');
 
     const notes = $('notes');
     notes.textContent = '';
-    if (s.captcha) {
-      notes.appendChild(note('warn', '<b>Douyin doğrulama istiyor.</b><br>Açılan tarayıcı penceresindeki bulmacayı ya da kutucuğu tamamla. Program bekliyor ve sonra kendiliğinden devam edecek.'));
-    }
+    if (s.captcha) notes.appendChild(note('warn', [el('b', t('ui.note_captcha_title')), el('br'), document.createTextNode(pick('ui.note_captcha_body'))]));
     if (s.login_wall && !running) {
-      const n = note('warn', 'Douyin, giriş yapılmadan bu profilin sadece bir kısmını gösterdi. Hepsini indirmek istersen bir kez giriş yap, sonra aynı linkle tekrar başlat. Daha önce inenler tekrar inmez.');
-      const b = document.createElement('button'); b.className = 'btn'; b.textContent = "Douyin'e giriş yap";
-      b.onclick = () => $('login').click(); n.appendChild(document.createElement('br')); n.appendChild(b);
-      notes.appendChild(n);
+      const b = el('button', t('ui.login_button')); b.className = 'btn'; b.onclick = () => $('login').click();
+      notes.appendChild(note('warn', [document.createTextNode(t('ui.note_login_wall')), el('br'), b]));
     }
-    if (!running && s.phase === 'error' && s.summary) notes.appendChild(note('err', escapeHtml(s.summary)));
+    if (!running && s.phase === 'error' && s.summary) notes.appendChild(note('err', [document.createTextNode(renderMsg(s.summary))]));
 
     $('done-actions').hidden = running || s.mode === 'login' || !(s.files_done || s.files_skipped);
 
-    if (s.logs && s.logs.length) {
+    if (!relabelOnly && s.logs && s.logs.length) {
       const log = $('log');
       const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 10;
       for (const line of s.logs) {
-        const d = document.createElement('div');
-        d.className = line.level;
-        const t = document.createElement('time'); t.textContent = line.t;
-        d.appendChild(t); d.appendChild(document.createTextNode(line.text));
-        log.appendChild(d);
+        logEntries.push(line);
+        log.appendChild(logLine(line));
       }
-      while (log.childElementCount > 800) log.firstElementChild.remove();
+      while (logEntries.length > 800) { logEntries.shift(); log.firstElementChild.remove(); }
       if (atBottom) log.scrollTop = log.scrollHeight;
     }
-    logNext = s.log_next;
-    if (lastPhase !== s.phase && (s.phase === 'error')) $('details').open = true;
+    if (!relabelOnly) logNext = s.log_next;
+    if (lastPhase !== s.phase && s.phase === 'error') $('details').open = true;
     lastPhase = s.phase;
   }
 
+  const logEntries = [];
+  function logLine(line) {
+    const d = el('div');
+    d.className = line.level;
+    d.appendChild(el('time', line.t));
+    d.appendChild(document.createTextNode(line.msg ? renderMsg(line.msg) : (line.text || '')));
+    return d;
+  }
+  function renderLog() {
+    const log = $('log');
+    log.textContent = '';
+    for (const line of logEntries) log.appendChild(logLine(line));
+  }
+  function clearLog() { logEntries.length = 0; $('log').textContent = ''; }
+
   let pollTimer = null;
-  async function poll(immediate) {
+  async function poll() {
     clearTimeout(pollTimer);
     try { render(await api('/api/state?since=' + logNext)); } catch (e) { /* sunucu kapandıysa sessiz */ }
     pollTimer = setTimeout(poll, running ? 600 : 1500);
   }
-  window.addEventListener('beforeunload', (e) => { if (running) { e.preventDefault(); e.returnValue = ''; } });
-  poll(true);
-  $('link').focus();
+  window.addEventListener('beforeunload', (e) => { if (running && !bridge) { e.preventDefault(); e.returnValue = ''; } });
+  window.douyinRefresh = () => poll();
+
+  (async () => {
+    try { await loadStrings(); } catch (e) { S = {}; applyStatic(); }
+    renderDetect();
+    updateModeRows();
+    document.body.classList.remove('loading');
+    poll();
+    if (!bridge) $('link').focus();
+  })();
 })();
 </script>
 </body>
