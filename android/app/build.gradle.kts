@@ -83,6 +83,8 @@ android {
 
     sourceSets["main"].assets.srcDir(sharedAssetsDir)
     sourceSets["main"].res.srcDir(sharedResDir)
+    // Ortak test verileri cihazda da denensin (Android'in kendi düzenli ifade ve JSON motoruyla).
+    sourceSets["androidTest"].assets.srcDir(File(repoRoot, "tests/vectors"))
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

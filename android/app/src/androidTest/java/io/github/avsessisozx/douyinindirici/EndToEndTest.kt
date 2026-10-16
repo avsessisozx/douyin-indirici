@@ -127,6 +127,8 @@ class EndToEndTest {
 
     /** Ekran görüntüsünü İndirilenler/di-screens klasörüne kaydeder (CI oradan alır). */
     private fun screenshot(name: String) {
+        inst.waitForIdleSync()
+        Thread.sleep(1500)   // emülatörde WebView'in yeni kareyi çizmesi zaman alıyor
         val bmp: Bitmap = inst.uiAutomation.takeScreenshot() ?: return
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.png")

@@ -9,8 +9,8 @@ import java.util.Locale
 object Naming {
     private val INVALID = Regex("[<>:\"/\\\\|?*\\x00-\\x1f\\x7f]")
     private val LINE_BREAKS = Regex("[\\r\\n\\t\\u000B\\f]+")
-    private val SPACES = Regex("(?U)\\s+")
-    private val HASHTAG = Regex("(?U)#\\S+")
+    private val SPACES = Rx.unicode("\\s+")
+    private val HASHTAG = Rx.unicode("#\\S+")
     private val RESERVED: Set<String> = buildSet {
         addAll(listOf("CON", "PRN", "AUX", "NUL"))
         for (i in 1..9) { add("COM$i"); add("LPT$i") }

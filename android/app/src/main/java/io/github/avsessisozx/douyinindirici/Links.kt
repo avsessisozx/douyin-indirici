@@ -28,9 +28,8 @@ object Links {
         }
     }
 
-    private val URL_RE = Regex("(?U)(?:https?://)?(?:[a-z0-9-]+\\.)*(?:douyin|iesdouyin)\\.com[^\\s，。！？、\"'<>]*",
-        setOf(RegexOption.IGNORE_CASE))
-    private val ID_RE = Regex("(?U)^\\d{15,22}$")
+    private val URL_RE = Rx.unicode("(?:https?://)?(?:[a-z0-9-]+\\.)*(?:douyin|iesdouyin)\\.com[^\\s，。！？、\"'<>]*", ignoreCase = true)
+    private val ID_RE = Rx.unicode("^\\d{15,22}$")
     private val SEC_UID_RE = Regex("^[A-Za-z0-9_\\-]{20,}$")
     private val USER_PATH = Regex("^/(?:share/)?user/([^/?#]+)")
     private val POST_PATH = Regex("^/(?:share/)?(video|note|slides|gallery)/(\\d+)")
