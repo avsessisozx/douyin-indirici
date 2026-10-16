@@ -33,14 +33,13 @@ import org.json.JSONObject
  * Douyin doğrulama ya da giriş istediğinde arka plandaki tarayıcı öne gelir.
  */
 @SuppressLint("SetJavaScriptEnabled")
-class MainActivity : Activity(), OverlayHost, ApiHost {
+class MainActivity : Activity(), ApiHost {
 
     lateinit var uiWeb: WebView; private set
-    lateinit var dyWeb: WebView; private set
+    private lateinit var holder: DouyinHolder
     private lateinit var dyPane: LinearLayout
     private lateinit var headerTitle: TextView
     private lateinit var doneButton: Button
-    private var web: WebDouyin? = null
 
     @Volatile var uiReady = false; private set
     @Volatile var overlayMode: String? = null; private set
@@ -80,9 +79,7 @@ class MainActivity : Activity(), OverlayHost, ApiHost {
         }
         header.addView(headerTitle, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         header.addView(doneButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        dyWeb = WebView(this)
         dyPane.addView(header, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        dyPane.addView(dyWeb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         root.addView(dyPane, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
         // --- Arayüz (önde)
@@ -90,10 +87,23 @@ class MainActivity : Activity(), OverlayHost, ApiHost {
         root.addView(uiWeb, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         setContentView(root)
 
-        web = WebDouyin(dyWeb, this).also { Core.web = it }
+        // Gizli Douyin tarayıcısı uygulamaya ait; ekran yeniden kurulsa da yaşar.
+        holder = DouyinHolder.get(this)
+        holder.attach(this, dyPane, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setupUi()
         handleIntent(intent)
         uiWeb.loadUrl(UI_URL)
+        askNotificationPermissionOnce()
+    }
+
+    /** Bildirim iznini indirme sırasında değil, ilk açılışta bir kez sor. */
+    private fun askNotificationPermissionOnce() {
+        if (Build.VERSION.SDK_INT < 33) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        val prefs = getSharedPreferences("durum", MODE_PRIVATE)
+        if (prefs.getBoolean("bildirim_soruldu", false)) return
+        prefs.edit().putBoolean("bildirim_soruldu", true).apply()
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
     }
 
     private fun setupUi() {
@@ -143,18 +153,18 @@ class MainActivity : Activity(), OverlayHost, ApiHost {
         uiWeb.evaluateJavascript(js) { callback?.invoke(it) }
     }
 
-    // ------------------------------------------------------------ OverlayHost
-    override fun showOverlay(mode: String, onDone: (() -> Unit)?) {
+    // ------------------------------------------------------------ Douyin ekranını öne alma
+    fun applyOverlay(mode: String, onDone: (() -> Unit)?) {
         overlayMode = mode
         overlayDone = onDone
         headerTitle.text = Core.text(if (mode == "login") "ui.overlay_login_title" else "ui.overlay_captcha_title")
         doneButton.text = Core.text("ui.overlay_done")
         doneButton.visibility = if (onDone != null) View.VISIBLE else View.GONE
         uiWeb.visibility = View.INVISIBLE
-        dyWeb.requestFocus()
+        holder.webView.requestFocus()
     }
 
-    override fun hideOverlay() {
+    fun clearOverlay() {
         overlayMode = null
         overlayDone = null
         uiWeb.visibility = View.VISIBLE
@@ -173,10 +183,7 @@ class MainActivity : Activity(), OverlayHost, ApiHost {
     }
 
     override fun requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            runOnUiThread { requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1) }
-        }
+        // İzin ilk açılışta sorulur; indirme sırasında pencere açıp işi bölmeyiz.
     }
 
     override fun openResult(location: String?) {
@@ -208,12 +215,7 @@ class MainActivity : Activity(), OverlayHost, ApiHost {
     }
 
     override fun onDestroy() {
-        if (Core.web === web) {
-            Core.web = null
-            // Tarayıcı kapanıyor: toplama aşamasındaki iş sürdürülemez. İndirme aşaması servisle sürer.
-            if (Core.engine.running && Core.engine.phase in setOf("starting", "collecting")) Core.engine.stop()
-        }
-        dyWeb.destroy()
+        holder.detach(this)   // tarayıcı yaşamaya devam eder; iş sürer
         uiWeb.destroy()
         super.onDestroy()
     }

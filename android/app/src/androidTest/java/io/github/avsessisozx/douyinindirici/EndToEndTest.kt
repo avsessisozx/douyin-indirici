@@ -49,6 +49,9 @@ class EndToEndTest {
         TestHooks.sinkFactory = { FileSink(out) }
         Core.init(ctx)
         Core.saveSettings(SettingsValues(lang = "tr"))
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            inst.uiAutomation.grantRuntimePermission(ctx.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     @After
@@ -289,5 +292,40 @@ class EndToEndTest {
         assertEquals("stopped", Core.engine.phase)
         Thread.sleep(1200)
         assertEquals("Durduruldu", jsText("document.getElementById('status').textContent"))
+    }
+
+    @Test
+    fun i_screenRebuiltDuringCollection() {
+        // Android ekranı yeniden kurduğunda (izin penceresi, tema değişimi...) iş yarıda kalmamalı.
+        val s = launch()
+        setLink("https://www.douyin.com/user/$okProfile")
+        clickId("start")
+        assertTrue(waitUntil(20_000) { Core.engine.running && Core.engine.phase == "collecting" && Core.engine.foundPosts.get() > 0 })
+        s.recreate()
+        assertTrue("ekran geri gelmedi", waitUntil(30_000) { activity(s)?.uiReady == true })
+        assertTrue(waitUntil(120_000) { !Core.engine.running })
+        val snap = Core.engine.snapshot(0)
+        assertEquals(logs(snap), "done", snap.getString("phase"))
+        assertEquals(logs(snap), 14, snap.getInt("found_posts"))
+        Thread.sleep(1500)
+        assertEquals("İndirme tamamlandı", jsText("document.getElementById('status').textContent"))
+        screenshot("10_ekran_yeniden_kuruldu")
+    }
+
+    @Test
+    fun j_captchaWhileScreenRebuilt() {
+        // Doğrulama ekranı açıkken ekran yeniden kurulursa bulmaca yine görünmeli.
+        val s = launch()
+        setLink("https://www.douyin.com/user/$captchaProfile")
+        setSelect("limit", "10")
+        clickId("start")
+        assertTrue("doğrulama ekranı gelmedi", waitUntil(20_000) { activity(s)?.overlayMode == "captcha" })
+        s.recreate()
+        assertTrue(waitUntil(30_000) { activity(s)?.uiReady == true })
+        val shown = activity(s)?.overlayMode == "captcha" || !Core.engine.captcha
+        assertTrue("yeniden kurulan ekranda doğrulama gösterilmedi", shown)
+        assertTrue(waitUntil(120_000) { !Core.engine.running })
+        assertEquals("done", Core.engine.phase)
+        assertEquals(null, activity(s)?.overlayMode)
     }
 }
