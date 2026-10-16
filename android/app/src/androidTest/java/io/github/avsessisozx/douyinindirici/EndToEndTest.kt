@@ -363,7 +363,7 @@ class EndToEndTest {
         resetCaptcha()
         val s = launch()
         setLink("https://www.douyin.com/user/$slowCaptchaProfile")
-        setSelect("limit", "5")
+        setSelect("limit", "10")
         clickId("start")
         assertTrue("doğrulama penceresi açılmadı", waitUntil(25_000) { activity(s)?.overlayMode == "captcha" })
         screenshot("11_dogrulama_penceresi")
@@ -387,7 +387,7 @@ class EndToEndTest {
         // Bulmaca çözülünce iş kendiliğinden biter
         assertTrue(waitUntil(120_000) { !Core.engine.running })
         assertEquals(logs(Core.engine.snapshot(0)), "done", Core.engine.phase)
-        assertEquals(5, Core.engine.foundPosts.get())
+        assertEquals(10, Core.engine.foundPosts.get())
         assertEquals(null, activity(s)?.overlayMode)
     }
 }
