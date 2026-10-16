@@ -1,6 +1,5 @@
 package io.github.avsessisozx.douyinindirici
 
-import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -15,7 +14,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.File
-import java.net.InetSocketAddress
 import java.nio.file.Files
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -25,19 +23,18 @@ import java.util.concurrent.atomic.AtomicBoolean
  * dosyalar bilgisayardaki küçük bir HTTP sunucusundan iner, düz klasöre yazılır.
  */
 class EngineTest {
-    private lateinit var server: HttpServer
+    private lateinit var server: TinyHttpServer
     private lateinit var base: String
     private lateinit var out: File
     val hits = ConcurrentHashMap<String, Int>()
 
     @Before
     fun setUp() {
-        server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
-        server.createContext("/") { ex ->
-            val name = ex.requestURI.path.substringAfterLast('/')
+        server = TinyHttpServer { path, headers ->
+            val name = path.substringAfterLast('/')
             hits.merge(name, 1) { a, b -> a + b }
-            val (code, type, body) = when {
-                ex.requestHeaders.getFirst("Referer") != "https://www.douyin.com/" -> Triple(403, "text/plain", "no referer".toByteArray())
+            when {
+                headers["referer"] != "https://www.douyin.com/" -> Triple(403, "text/plain", "no referer".toByteArray())
                 name.startsWith("forbidden") -> Triple(403, "text/plain", "x".toByteArray())
                 name.startsWith("html") -> Triple(200, "text/html", "<html>".toByteArray())
                 name.startsWith("slow") -> { Thread.sleep(400); Triple(200, "video/mp4", ByteArray(64 * 1024) { 1 }) }
@@ -47,18 +44,14 @@ class EngineTest {
                 name.endsWith(".webp") -> Triple(200, "image/webp", ("webp" + name).toByteArray())
                 else -> Triple(404, "text/plain", "nope".toByteArray())
             }
-            ex.responseHeaders.add("Content-Type", type)
-            ex.sendResponseHeaders(code, body.size.toLong())
-            ex.responseBody.use { it.write(body) }
-        }
-        server.start()
-        base = "http://127.0.0.1:${server.address.port}"
+        }.start()
+        base = "http://127.0.0.1:${server.port}"
         out = Files.createTempDirectory("di-test").toFile()
     }
 
     @After
     fun tearDown() {
-        server.stop(0)
+        server.stop()
         out.deleteRecursively()
     }
 
