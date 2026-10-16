@@ -178,5 +178,6 @@
   "android.notif_stopped": "Durduruldu",
   "android.notif_failed": "İndirme tamamlanamadı",
   "android.notif_captcha": "Douyin doğrulama istiyor. Uygulamayı aç.",
+  "android.no_window": "Uygulama ekranı kapalı. Uygulamayı açıp tekrar dene.",
   "android.no_gallery_app": "Galeri uygulaması açılamadı. İnenler Galeri › Douyin klasöründe."
 }

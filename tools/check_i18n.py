@@ -39,7 +39,7 @@ def load(path: Path):
 def used_keys():
     keys = set()
     files = list((ROOT / "douyin_indirici").rglob("*.py")) + list((ROOT / "douyin_indirici").rglob("*.html"))
-    files += list((ROOT / "android").rglob("*.kt")) if (ROOT / "android").exists() else []
+    files += list((ROOT / "android" / "app" / "src" / "main").rglob("*.kt"))
     for f in files:
         text = f.read_text(encoding="utf-8")
         for pat in USE_PATTERNS:

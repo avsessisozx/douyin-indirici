@@ -178,5 +178,6 @@
   "android.notif_stopped": "Stopped",
   "android.notif_failed": "Download could not be completed",
   "android.notif_captcha": "Douyin wants a verification. Open the app.",
+  "android.no_window": "The app screen is closed. Open the app and try again.",
   "android.no_gallery_app": "Could not open a gallery app. Downloads are in Gallery › Douyin."
 }

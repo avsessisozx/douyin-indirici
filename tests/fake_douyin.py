@@ -28,10 +28,11 @@ TOTAL_POSTS = 14
 
 
 class FakeDouyin:
-    def __init__(self) -> None:
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
+    def __init__(self, host: str = "127.0.0.1", port: int = 0, public_base: str = "") -> None:
+        """public_base: istemcinin sunucuya ulaştığı adres (Android emülatöründe http://10.0.2.2:PORT)."""
+        self.server = ThreadingHTTPServer((host, port), self._handler())
         self.port = self.server.server_address[1]
-        self.base = f"http://127.0.0.1:{self.port}"
+        self.base = public_base.rstrip("/") or f"http://127.0.0.1:{self.port}"
         self.media_hits = {}
         self.captcha_passed = False
 
@@ -178,3 +179,18 @@ CAPTCHA_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>验证
 <script>
 setTimeout(async () => { await fetch('/captcha-pass'); location.reload(); }, 3000);
 </script></body></html>"""
+
+
+if __name__ == "__main__":
+    import argparse
+    import time
+
+    ap = argparse.ArgumentParser(description="Testler için sahte Douyin sunucusu")
+    ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--public", default="", help="istemcinin kullanacağı adres, ör. http://10.0.2.2:8765")
+    args = ap.parse_args()
+    fake = FakeDouyin(args.host, args.port, args.public).start()
+    print(f"fake douyin on {args.host}:{fake.port} public={fake.base}", flush=True)
+    while True:
+        time.sleep(3600)

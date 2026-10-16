@@ -19,6 +19,34 @@ val copySharedAssets by tasks.registering(Sync::class) {
     into(sharedAssetsDir)
 }
 
+// Uygulamanın telefondaki adı da çeviri dosyalarından (ui.app_title) gelir:
+// en.json -> values/strings.xml, tr.json -> values-tr/strings.xml ...
+val sharedResDir = layout.buildDirectory.dir("generated/sharedRes")
+val generateAppName by tasks.registering {
+    val src = File(repoRoot, "ceviriler")
+    val out = sharedResDir.get().asFile
+    inputs.dir(src)
+    outputs.dir(out)
+    doLast {
+        out.deleteRecursively()
+        fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace("'", "\\'").replace("\"", "\\\"")
+        src.listFiles { f -> f.name.endsWith(".json") }!!.sortedBy { it.name }.forEach { f ->
+            @Suppress("UNCHECKED_CAST")
+            val data = groovy.json.JsonSlurper().parse(f, "UTF-8") as Map<String, Any?>
+            val title = data["ui.app_title"] as? String ?: return@forEach
+            val code = f.name.removeSuffix(".json")
+            val dir = File(out, if (code == "en") "values" else "values-$code")
+            dir.mkdirs()
+            File(dir, "strings.xml").writeText(
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n" +
+                    "    <string name=\"app_name\">${esc(title)}</string>\n</resources>\n",
+                Charsets.UTF_8,
+            )
+        }
+    }
+}
+
 android {
     namespace = "io.github.avsessisozx.douyinindirici"
     compileSdk = 35
@@ -54,6 +82,7 @@ android {
     }
 
     sourceSets["main"].assets.srcDir(sharedAssetsDir)
+    sourceSets["main"].res.srcDir(sharedResDir)
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -73,7 +102,7 @@ android {
     }
 }
 
-tasks.named("preBuild") { dependsOn(copySharedAssets) }
+tasks.named("preBuild") { dependsOn(copySharedAssets, generateAppName) }
 
 kotlin {
     compilerOptions {

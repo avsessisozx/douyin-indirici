@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Windows sürümündeki simgenin aynısı: kırmızı zemin üzerinde beyaz indirme oku -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M49,28h10a2,2 0,0 1,2 2v26h11.5a1.5,1.5 0,0 1,1.1 2.5L55.1,77.6a1.5,1.5 0,0 1,-2.2 0L34.4,58.5a1.5,1.5 0,0 1,1.1 -2.5H47V30a2,2 0,0 1,2 -2z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,82h36a3,3 0,0 1,0 6H36a3,3 0,0 1,0 -6z" />
+</vector>
