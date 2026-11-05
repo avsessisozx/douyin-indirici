@@ -12,9 +12,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from . import APP_NAME, __version__, i18n, links
+from . import APP_NAME, __version__, i18n, links, report
+from .history import History
 from .i18n import msg
-from .engine import MODE_LOGIN, MODE_PROFILE, MODE_SINGLE, Engine, Job
+from .engine import MODE_LOGIN, MODE_PROFILE, MODE_RETRY, MODE_SINGLE, Engine, Job
 from .paths import clean_settings, load_settings, save_settings
 
 
@@ -188,6 +189,51 @@ def make_handler(state: AppState):
             if path == "/api/stop":
                 state.engine.stop()
                 return self._json({"ok": True})
+
+            if path == "/api/pause":
+                state.engine.pause()
+                return self._json({"ok": True})
+
+            if path == "/api/resume":
+                state.engine.resume()
+                return self._json({"ok": True})
+
+            if path == "/api/retry":
+                error = state.engine.start(Job("", MODE_RETRY, state.settings))
+                if error:
+                    return self._json({"error": error.to_json()}, 400)
+                return self._json({"ok": True})
+
+            if path == "/api/history-count":
+                try:
+                    h = History()
+                    try:
+                        n = h.count()
+                    finally:
+                        h.close()
+                except Exception:
+                    n = 0
+                return self._json({"count": n})
+
+            if path == "/api/history-clear":
+                if state.engine.running:
+                    return self._json({"error": msg("engine.already_running").to_json()}, 400)
+                try:
+                    h = History()
+                    try:
+                        n = h.clear()
+                    finally:
+                        h.close()
+                except Exception as exc:
+                    return self._json({"error": msg("engine.history_failed", error=str(exc)).to_json()}, 400)
+                return self._json({"message": msg("server.history_cleared", n=n).to_json(), "count": 0})
+
+            if path == "/api/report":
+                lang = i18n.current_language()
+                info = [("Sürüm", __version__), ("Sistem", f"{sys.platform} · Python {sys.version.split()[0]}"),
+                        ("Dil", lang)]
+                text = report.build(info, state.settings, state.engine.snapshot(0), lang)
+                return self._json({"text": text, "lines": text.count("\n")})
 
             if path == "/api/choose-folder":
                 if sys.platform != "win32":

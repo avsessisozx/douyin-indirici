@@ -60,8 +60,14 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "quality": QUALITY_HIGHEST,
     "compat": True,
     "limit": 0,
+    "history": True,      # geçmişe göre devam et: inenleri atla, profilin sadece yenilerine bak
+    "parallel": 3,        # aynı anda inen gönderi sayısı
+    "chunks": 4,          # her dosya kaç parçadan aynı anda çekilsin (1 = tek bağlantı)
+    "sound": True,        # doğrulama (bulmaca) çıkınca ses çal
     "lang": "auto",
 }
+PARALLEL_CHOICES = (1, 2, 3, 4, 6, 8)
+CHUNK_CHOICES = (1, 2, 4, 6, 8)
 
 
 def settings_path() -> Path:
@@ -93,10 +99,22 @@ def clean_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     except (TypeError, ValueError):
         limit = 0
     out["limit"] = max(0, min(limit, 100000))
+    out["history"] = bool(settings.get("history", True))
+    out["sound"] = bool(settings.get("sound", True))
+    out["parallel"] = _choice(settings.get("parallel"), PARALLEL_CHOICES, DEFAULT_SETTINGS["parallel"])
+    out["chunks"] = _choice(settings.get("chunks"), CHUNK_CHOICES, DEFAULT_SETTINGS["chunks"])
     lang = str(settings.get("lang") or "auto")
     from .i18n import available_languages
     out["lang"] = lang if lang in {item["code"] for item in available_languages()} else "auto"
     return out
+
+
+def _choice(value: Any, allowed, default: int) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return default
+    return n if n in allowed else default
 
 
 def save_settings(settings: Dict[str, Any]) -> None:

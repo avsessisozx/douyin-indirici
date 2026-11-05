@@ -6,13 +6,14 @@ import asyncio
 import threading
 import time
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from . import links
 from .browser import BrowserError, DouyinBrowser
 from .i18n import Msg, msg
+from .history import History
 from .fetcher import Cancelled, existing_file, fetch, write_bytes, ext_from_content_type
 from .media import MediaFile, Post, author_folder, build_post
 from .paths import app_data_dir, clean_settings
@@ -20,7 +21,20 @@ from .paths import app_data_dir, clean_settings
 MODE_SINGLE = "single"
 MODE_PROFILE = "profile"
 MODE_LOGIN = "login"
-WORKERS = 3
+MODE_RETRY = "retry"
+KNOWN_STOP = 10          # üst üste bu kadar bilinen gönderi görünce "yenilerin sonu" sayılır
+
+
+def _alert_sound() -> None:
+    """Doğrulama (bulmaca) çıkınca dikkat çekmek için kısa bir ses çalar (sadece Windows)."""
+    try:
+        import sys
+        if sys.platform == "win32":
+            import winsound
+            for freq in (880, 1175, 880):
+                winsound.Beep(freq, 180)
+    except Exception:
+        pass
 
 
 @dataclass
@@ -28,6 +42,7 @@ class Job:
     link: str
     mode: str
     settings: Dict[str, Any]
+    ids: List[str] = field(default_factory=list)     # yeniden denenecek gönderi kimlikleri (MODE_RETRY)
 
 
 class Engine:
@@ -35,6 +50,12 @@ class Engine:
         self._lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None
         self._cancel = threading.Event()
+        self._pause = threading.Event()
+        self._known: set = set()
+        self._job_sec_uid = ""
+        self._sound = False
+        self.history: Optional[History] = None
+        self._failed: Dict[str, Dict[str, Any]] = {}     # inemeyen gönderiler: kimlik -> {"n": dosya sayısı, "name": ad}
         self._reset()
 
     # ------------------------------------------------------------ durum
@@ -53,6 +74,9 @@ class Engine:
         self.files_skipped = 0
         self.files_failed = 0
         self.posts_skipped = 0
+        self.posts_known = 0
+        self._known = set()
+        self._job_sec_uid = ""
         self.current = ""
         self.current_bytes = 0
         self.current_total = 0
@@ -90,6 +114,9 @@ class Engine:
                 "found_posts": self.found_posts,
                 "posts_done": self.posts_done,
                 "posts_skipped": self.posts_skipped,
+                "posts_known": self.posts_known,
+                "paused": self._pause.is_set(),
+                "failed_posts": len(self._failed),
                 "collecting": self.collecting,
                 "files_total": self.files_total,
                 "files_done": self.files_done,
@@ -108,16 +135,23 @@ class Engine:
         with self._lock:
             if self.running:
                 return msg("engine.already_running")
-        if job.mode != MODE_LOGIN:
+        if job.mode not in (MODE_LOGIN, MODE_RETRY):
             parsed = links.parse_link(job.link)
             if not parsed.ok:
                 return parsed.error
             if job.mode == MODE_SINGLE and parsed.kind == links.PROFILE:
                 return msg("engine.single_needs_post")
+        if job.mode == MODE_RETRY:
+            job.ids = list(self._failed.keys())
+            if not job.ids:
+                return msg("engine.retry_none")
+        else:
+            self._failed = {}
         logs_offset = self.log_offset + len(self.logs)
         self._reset()
         self.log_offset = logs_offset
         self._cancel = threading.Event()
+        self._pause = threading.Event()
         self.running = True
         self.phase = "starting"
         self.mode = job.mode
@@ -130,6 +164,24 @@ class Engine:
         if self.running:
             self.log("warn", msg("engine.stopping"))
             self._cancel.set()
+
+    def pause(self) -> None:
+        """İşi duraklatır: o an inen dosya biter, yenisi başlamaz."""
+        if self.running and not self._pause.is_set():
+            self._pause.set()
+            self.log("warn", msg("engine.paused"))
+
+    def resume(self) -> None:
+        if self._pause.is_set():
+            self._pause.clear()
+            self.log("info", msg("engine.resumed"))
+
+    def is_paused(self) -> bool:
+        return self._pause.is_set() and not self._cancel.is_set()
+
+    async def _wait_pause(self) -> None:
+        while self._pause.is_set() and not self._cancel.is_set():
+            await asyncio.sleep(0.3)
 
     def wait(self, timeout: float = 10) -> None:
         thread = self._thread
@@ -146,6 +198,7 @@ class Engine:
             self.summary = msg("engine.unexpected_summary")
         finally:
             self.running = False
+            self._pause.clear()
             self.captcha = False
             self.collecting = False
             self.current = ""
@@ -153,19 +206,29 @@ class Engine:
     # ------------------------------------------------------------ iş akışı
     async def _run(self, job: Job) -> None:
         settings = clean_settings(job.settings)
+        self._sound = bool(settings.get("sound", True))
         if job.mode == MODE_SINGLE:
             settings["content"] = "all"   # tek gönderide ne varsa onu indir
             settings["limit"] = 0
         try:
             async with DouyinBrowser(app_data_dir(), log=self.log, cancel=self._cancel,
-                                     on_captcha=self._set_captcha) as browser:
+                                     on_captcha=self._set_captcha, is_paused=self.is_paused) as browser:
                 if job.mode == MODE_LOGIN:
                     await browser.login_session()
                     self.phase = "done"
                     self.summary = msg("engine.login_done")
                     self.log("ok", self.summary)
                     return
-                await self._download_job(browser, job, settings)
+                self.history = self._open_history(settings)
+                try:
+                    if job.mode == MODE_RETRY:
+                        await self._retry_job(browser, job, settings)
+                    else:
+                        await self._download_job(browser, job, settings)
+                finally:
+                    if self.history is not None:
+                        self.history.close()
+                        self.history = None
         except BrowserError as exc:
             if self._cancel.is_set():
                 self._finish_stopped()
@@ -176,12 +239,23 @@ class Engine:
         except (asyncio.CancelledError, Cancelled):
             self._finish_stopped()
 
+    def _open_history(self, settings: Dict[str, Any]) -> Optional[History]:
+        if not settings.get("history", True):
+            return None
+        try:
+            return History()
+        except Exception as exc:        # geçmiş dosyası açılamazsa geçmişsiz devam et
+            self.log("warn", msg("engine.history_failed", error=str(exc)))
+            return None
+
     def _finish_stopped(self) -> None:
         self.phase = "stopped"
         self.summary = msg("engine.stopped", n=self.files_done)
         self.log("warn", self.summary)
 
     def _set_captcha(self, value: bool) -> None:
+        if value and not self.captcha and self._sound:
+            threading.Thread(target=_alert_sound, daemon=True).start()
         self.captcha = value
 
     async def _download_job(self, browser: DouyinBrowser, job: Job, settings: Dict[str, Any]) -> None:
@@ -194,7 +268,7 @@ class Engine:
 
         queue: asyncio.Queue = asyncio.Queue()
         downloads = DownloadPool(self, browser, out_root, settings, queue)
-        workers = [asyncio.ensure_future(downloads.worker()) for _ in range(WORKERS)]
+        workers = [asyncio.ensure_future(downloads.worker()) for _ in range(settings["parallel"])]
 
         try:
             if job.mode == MODE_SINGLE:
@@ -217,10 +291,21 @@ class Engine:
                         self.log("info", msg("engine.profile_name", name=name))
                 self.phase = "collecting"
                 self.collecting = True
+                self._known = set()
+                self._job_sec_uid = sec_uid
+                stop_known = 0
+                if self.history is not None and sec_uid:
+                    self._known = self.history.known(sec_uid)
+                    if self._known:
+                        self.log("info", msg("engine.history_known", n=len(self._known)))
+                        if self.history.was_scanned(sec_uid):
+                            stop_known = KNOWN_STOP
                 result = await browser.collect_profile(
                     sec_uid,
                     limit=settings["limit"],
                     on_items=lambda items: self._enqueue(queue, items, settings),
+                    known_ids=self._known,
+                    stop_after_known=stop_known,
                 )
                 self.collecting = False
                 if result.author_name and not self.author:
@@ -240,12 +325,70 @@ class Engine:
         if self._cancel.is_set():
             self._finish_stopped()
             return
+        if self._failed:
+            self.log("info", msg("engine.retrying", n=len(self._failed)))
+            await self._retry_pass(browser, out_root, settings)
+            if self._cancel.is_set():
+                self._finish_stopped()
+                return
+        if self.posts_known:
+            self.log("info", msg("engine.history_skipped", n=self.posts_known))
         self.phase = "done"
         self.summary = msg("summary", done=self.files_done, skipped=self.files_skipped,
                            failed=self.files_failed, unmatched=self.posts_skipped)
         if self.files_done == 0 and self.files_skipped == 0:
             self.phase = "error" if self.files_failed or self.found_posts == 0 else "done"
         self.log("ok" if self.phase == "done" else "error", self.summary)
+
+    async def _retry_job(self, browser: DouyinBrowser, job: Job, settings: Dict[str, Any]) -> None:
+        """"İnemeyenleri tekrar dene": önceki işte inemeyen gönderileri baştan alıp indirir."""
+        out_root = Path(settings["out_dir"]).expanduser()
+        out_root.mkdir(parents=True, exist_ok=True)
+        self.phase = "downloading"
+        self.log("info", msg("engine.retrying", n=len(job.ids)))
+        await self._retry_pass(browser, out_root, settings, only=job.ids)
+        if self._cancel.is_set():
+            self._finish_stopped()
+            return
+        self.phase = "done"
+        self.summary = msg("summary", done=self.files_done, skipped=self.files_skipped,
+                           failed=self.files_failed, unmatched=self.posts_skipped)
+        self.log("ok" if not self._failed else "error", self.summary)
+
+    async def _retry_pass(self, browser: DouyinBrowser, out_root: Path, settings: Dict[str, Any],
+                          only: Optional[List[str]] = None) -> None:
+        """İnemeyen gönderilerin sayfasını yeniden açıp (adresler eskimiş olabilir) bir kez daha indirir."""
+        ids = list(only if only is not None else self._failed.keys())
+        queue: asyncio.Queue = asyncio.Queue()
+        pool = DownloadPool(self, browser, out_root, settings, queue)
+        workers = [asyncio.ensure_future(pool.worker()) for _ in range(settings["parallel"])]
+        try:
+            for aweme_id in ids:
+                if self._cancel.is_set():
+                    break
+                await self._wait_pause()
+                try:
+                    item = await browser.get_post(aweme_id, quiet=True)
+                except BrowserError as exc:
+                    self.log("warn", msg("engine.download_failed", name=aweme_id, error=exc.message))
+                    continue
+                post = build_post(item, content="all", quality=settings["quality"], compat=settings["compat"])
+                if not post.aweme_id or post.skipped_reason:
+                    continue
+                prev = self._failed.pop(aweme_id, None)
+                if prev:
+                    self.files_failed = max(0, self.files_failed - int(prev.get("n", 0)))
+                if not prev:
+                    self.files_total += len(post.files)
+                queue.put_nowait(post)
+            for _ in workers:
+                queue.put_nowait(None)
+            await asyncio.gather(*workers)
+        except BaseException:
+            for w in workers:
+                w.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
+            raise
 
     def _report_profile(self, result) -> None:
         if result.reason == "private":
@@ -262,7 +405,11 @@ class Engine:
                 self.log("warn", msg("engine.login_wall", n=result.collected))
         elif result.reason == "limit":
             self.log("info", msg("engine.limit_reached", n=result.collected))
+        elif result.reason == "up_to_date":
+            self.log("ok", msg("engine.up_to_date", n=result.collected))
         elif result.reason in ("end", "stalled"):
+            if result.reason == "end" and self.history is not None and result.sec_uid:
+                self.history.set_scanned(result.sec_uid, result.author_name or self.author)
             if result.reported_count:
                 self.log("ok", msg("engine.profile_scanned_total", n=result.collected, total=result.reported_count))
             else:
@@ -276,6 +423,9 @@ class Engine:
             self.found_posts += 1
             if not self.author and post.author_name:
                 self.author = post.author_name
+            if post.aweme_id in self._known:
+                self.posts_known += 1
+                continue
             if post.skipped_reason:
                 self.posts_skipped += 1
                 self.log("skip", msg("engine.skipped_post", reason=post.skipped_reason, name=post.stem))
@@ -306,6 +456,7 @@ class DownloadPool:
                 return
             if self.engine._cancel.is_set():
                 continue
+            await self.engine._wait_pause()
             await self._download_post(post)
 
     async def _download_post(self, post: Post) -> None:
@@ -317,8 +468,19 @@ class DownloadPool:
         for media in post.files:
             if eng._cancel.is_set():
                 return
+            await eng._wait_pause()
             results.append(await self._download_file(folder, media))
         eng.posts_done += 1
+        failed_n = sum(1 for r in results if r == "failed")
+        if failed_n:
+            eng._failed[post.aweme_id] = {"n": failed_n, "name": post.stem}
+        elif results:
+            eng._failed.pop(post.aweme_id, None)
+            if eng.history is not None:
+                try:
+                    eng.history.mark(eng._job_sec_uid or post.author_sec_uid, post.aweme_id, post.author_name)
+                except Exception:
+                    pass
         if results and all(r != "failed" for r in results):
             if any(r == "downloaded" for r in results):
                 key = "engine.downloaded_gallery" if post.is_gallery else "engine.downloaded_video"
@@ -344,7 +506,7 @@ class DownloadPool:
         fallback_ext = ".mp4" if media.kind in ("video", "live") else ".jpg"
         result = await asyncio.to_thread(
             fetch, media.urls, stem_path, ext=media.ext, fallback_ext=fallback_ext,
-            headers=self.headers, cancel=eng._cancel, on_progress=progress,
+            headers=self.headers, cancel=eng._cancel, on_progress=progress, chunks=self.settings["chunks"],
         )
         if not result.ok and not eng._cancel.is_set() and result.status in (403, 0, 401):
             for url in media.urls[:3]:

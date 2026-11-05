@@ -154,6 +154,15 @@ class WebDouyin(private val webView: WebView, private val overlay: OverlayHost) 
         if (ok == null) listener?.log("warn", msg("browser.slow"))
     }
 
+    /** Giriş penceresi varsa kapatır; kapattıysa günlüğe yazar. */
+    private suspend fun dismissPopup() {
+        val r = evalString(DISMISS_JS) ?: return
+        if (r == "clicked") { listener?.log("info", msg("browser.popup_closed")); return }
+        if (r == "found") {   // X bulunamadı: Esc dene (pencere dışına tıklama bilerek yok; yanlış bağlantıya denk gelebilir)
+            eval("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true}))")
+        }
+    }
+
     private val now: Long get() = SystemClock.elapsedRealtime()
 
     // ------------------------------------------------------------ doğrulama
@@ -243,6 +252,7 @@ class WebDouyin(private val webView: WebView, private val overlay: OverlayHost) 
                 }
                 if (now - embeddedChecked > 2000) {
                     embeddedChecked = now
+                    dismissPopup()      // giriş penceresi sayfa açıldıktan biraz sonra çıkıyor
                     embeddedPosts(awemeId).firstOrNull()?.let { return@withContext it }
                 }
                 if (notFound) break
@@ -366,7 +376,7 @@ class WebDouyin(private val webView: WebView, private val overlay: OverlayHost) 
             if (st.reportedCount == 0 && now - st.lastChange > 6000) return "empty"
             val before = st.order.size
             if (waitIfBlocked(satisfied = { st.order.size > before })) { st.lastChange = now; continue }
-            eval(DISMISS_JS)
+            dismissPopup()
             eval(SCROLL_JS)
             delay(1300)
             if (now - st.lastChange > idleMs) {
@@ -510,14 +520,36 @@ class WebDouyin(private val webView: WebView, private val overlay: OverlayHost) 
 })()
 """
 
+        // Giriş penceresini bulup kapatır (gerçek Douyin'de denendi). Windows'taki DISMISS_JS ile aynı mantık;
+        // X bulunamazsa Esc tuşu olayı gönderir.
         private const val DISMISS_JS = """
 (function(){
-  var sel = ['.dy-account-close', '[class*="login"] [class*="close"]', '[aria-label="关闭"]'];
-  for (var i = 0; i < sel.length; i++) {
-    var els = document.querySelectorAll(sel[i]);
-    for (var j = 0; j < els.length; j++) { var r = els[j].getBoundingClientRect(); if (r.width > 0 && r.height > 0) els[j].click(); }
+  var TEXTS = ['登录后免费畅享高清视频', '登录', '扫码登录', 'Log in to Douyin', 'Scan to Log In'];
+  function visible(e){ var r = e.getBoundingClientRect(), s = getComputedStyle(e);
+    return r.width > 200 && r.height > 40 && s.visibility !== 'hidden' && s.display !== 'none'; }
+  var start = document.querySelector('#login-panel-new, #douyin-login-new-id, #douyin_login_comp_flat_panel, [id^="douyin_login"], .douyin_login_new_class');
+  if (start && !visible(start)) start = null;
+  if (!start) {
+    var all = document.querySelectorAll('div,span,p,h1,h2');
+    for (var i = 0; i < all.length && !start; i++) {
+      var e = all[i];
+      if (e.children.length === 0 && TEXTS.indexOf(e.textContent.trim()) >= 0 && visible(e)) start = e;
+    }
   }
-  return true;
+  if (!start) return 'none';
+  var box = start;
+  for (var n = 0; n < 9 && box && box !== document.body; n++, box = box.parentElement) {
+    var pr = box.getBoundingClientRect();
+    if (pr.width < 300 || pr.height < 150) continue;
+    if (pr.width > innerWidth * 0.97 && pr.height > innerHeight * 0.97) break;
+    var els = box.querySelectorAll('*');
+    for (var j = 0; j < els.length; j++) {
+      var r = els[j].getBoundingClientRect();
+      if (r.width >= 12 && r.width <= 56 && r.height >= 12 && r.height <= 56 && r.right > pr.right - 90 && r.top < pr.top + 90
+          && getComputedStyle(els[j]).cursor === 'pointer') { els[j].click(); return 'clicked'; }
+    }
+  }
+  return 'found';
 })()
 """
 

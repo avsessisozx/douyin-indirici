@@ -150,6 +150,12 @@ summary { cursor: pointer; color: var(--muted); font-size: 14px; }
   .folder-row { flex-wrap: wrap; }
   .folder-row input { flex-basis: 100%; }
 }
+.adv summary { cursor: pointer; font-weight: 600; }
+.adv .opt { display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.adv .opt small { display: block; color: var(--muted); font-size: 13px; }
+.adv .opt select { height: 36px; padding: 0 8px; background: var(--bg); border: 1.5px solid var(--line); border-radius: 8px; }
+.adv .adv-msg { color: var(--muted); font-size: 13.5px; min-height: 1.2em; }
+.actions .btn + .btn { margin-left: 8px; }
 .foot select { height: 30px; font-size: 13px; padding: 0 6px; }
 .foot label { display: inline-flex; gap: 6px; align-items: center; }
 .folder-static { padding: 9px 12px; border-radius: 9px; background: var(--bg); border: 1.5px solid var(--line); font-size: 14px; }
@@ -251,6 +257,27 @@ body.loading main { visibility: hidden; }
     </div>
   </section>
 
+  <section class="panel adv">
+    <details id="adv">
+      <summary data-i18n="ui.adv_title"></summary>
+      <label class="opt"><span><b data-i18n="ui.history_title"></b><small data-i18n="ui.history_desc"></small></span>
+        <input type="checkbox" id="history"></label>
+      <div class="opt"><span><b data-i18n="ui.parallel_label"></b></span>
+        <select id="parallel"><option value="1">1</option><option value="2">2</option><option value="3">3</option>
+          <option value="4">4</option><option value="6">6</option><option value="8">8</option></select></div>
+      <div class="opt"><span><b data-i18n="ui.chunks_label"></b><small data-i18n="ui.chunks_hint"></small></span>
+        <select id="chunks"><option value="1">1</option><option value="2">2</option><option value="4">4</option>
+          <option value="6">6</option><option value="8">8</option></select></div>
+      <label class="opt"><span><b data-i18n="ui.sound_label"></b></span>
+        <input type="checkbox" id="sound"></label>
+      <div class="opt"><span><button class="linklike" id="clear-history" type="button" data-i18n="ui.history_clear"></button>
+        <small class="adv-msg" id="history-msg" aria-live="polite"></small></span></div>
+      <div class="opt"><span><b data-i18n="ui.report_label"></b><small data-i18n="ui.report_hint"></small>
+        <small class="adv-msg" id="report-msg" aria-live="polite"></small></span>
+        <button class="btn" id="report-copy" type="button" data-i18n="ui.report_copy"></button></div>
+    </details>
+  </section>
+
   <button class="start" id="start" type="button" data-i18n="ui.start"></button>
   <div class="form-error" id="form-error" role="alert"></div>
 
@@ -260,8 +287,12 @@ body.loading main { visibility: hidden; }
     <div class="bar" id="bar"><i></i></div>
     <div class="counts" id="counts"></div>
     <div id="notes"></div>
+    <div class="actions" id="run-actions" hidden>
+      <button class="btn" id="pause" type="button"></button>
+    </div>
     <div class="actions" id="done-actions" hidden>
       <button class="btn" id="open-result" type="button"></button>
+      <button class="btn primary" id="retry" type="button" data-i18n="ui.retry_failed" hidden></button>
     </div>
     <details id="details">
       <summary data-i18n="ui.details"></summary>
@@ -431,6 +462,10 @@ body.loading main { visibility: hidden; }
       limit: parseInt($('limit').value, 10) || 0,
       quality: $('quality').value,
       compat: $('compat').checked,
+      history: $('history').checked,
+      parallel: parseInt($('parallel').value, 10) || 3,
+      chunks: parseInt($('chunks').value, 10) || 4,
+      sound: $('sound').checked,
       out_dir: $('outdir').value.trim(),
       lang: $('lang').value || 'auto',
     };
@@ -442,10 +477,14 @@ body.loading main { visibility: hidden; }
     if (!$('limit').value) $('limit').value = '0';
     $('quality').value = s.quality;
     $('compat').checked = !!s.compat;
+    $('history').checked = s.history !== false;
+    $('parallel').value = String(s.parallel || 3);
+    $('chunks').value = String(s.chunks || 4);
+    $('sound').checked = s.sound !== false;
     if (document.activeElement !== $('outdir')) $('outdir').value = s.out_dir || '';
   }
   const saveSettings = () => api('/api/settings', readSettings()).then(r => applySettings(r.settings)).catch(() => {});
-  ['limit', 'quality', 'compat', 'outdir'].forEach(id => $(id).addEventListener('change', saveSettings));
+  ['limit', 'quality', 'compat', 'outdir', 'history', 'parallel', 'chunks', 'sound'].forEach(id => $(id).addEventListener('change', saveSettings));
   document.querySelectorAll('input[name=content]').forEach(el => el.addEventListener('change', saveSettings));
   $('lang').addEventListener('change', async () => { await saveSettings(); await loadStrings(); });
 
@@ -482,6 +521,48 @@ body.loading main { visibility: hidden; }
     }
   }
   $('start').addEventListener('click', startOrStop);
+  $('pause').addEventListener('click', () => {
+    api(lastState && lastState.paused ? '/api/resume' : '/api/pause', {}).then(() => poll(true)).catch(() => {});
+  });
+  $('retry').addEventListener('click', async () => {
+    $('form-error').textContent = '';
+    try { await api('/api/retry', {}); poll(true); } catch (e) { $('form-error').textContent = errText(e); }
+  });
+  async function copyText(text) {
+    if (bridge) { await api('/api/copy', { text }); return; }
+    try { await navigator.clipboard.writeText(text); return; } catch (e) { /* eski yöntem */ }
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    if (!ok) throw new Error('copy failed');
+  }
+  $('report-copy').addEventListener('click', async () => {
+    const out = $('report-msg');
+    try {
+      const r = await api('/api/report', {});
+      await copyText(r.text);
+      out.textContent = t('ui.report_copied', { n: r.lines });
+    } catch (e) { out.textContent = t('ui.report_failed'); }
+  });
+  async function loadHistoryCount() {
+    try { const r = await api('/api/history-count', {}); $('history-msg').textContent = t('ui.history_count', { n: r.count }); }
+    catch (e) { /* yok say */ }
+  }
+  let clearArmed = 0;
+  $('clear-history').addEventListener('click', async () => {
+    const now = Date.now();
+    if (now - clearArmed > 6000) {          // ilk basış: uyar; 6 sn içinde ikinci basış: sil
+      clearArmed = now;
+      $('history-msg').textContent = t('ui.history_confirm') + ' ' + t('ui.history_sure');
+      return;
+    }
+    clearArmed = 0;
+    try { const r = await api('/api/history-clear', {}); $('history-msg').textContent = renderMsg(r.message); }
+    catch (e) { $('history-msg').textContent = errText(e); }
+  });
+  $('adv').addEventListener('toggle', () => { if ($('adv').open) loadHistoryCount(); });
   $('login').addEventListener('click', async () => {
     $('form-error').textContent = '';
     try { await api('/api/login', {}); clearLog(); $('progress').hidden = false; poll(true); }
@@ -499,7 +580,7 @@ body.loading main { visibility: hidden; }
     $('start').textContent = t(running ? 'ui.stop' : 'ui.start');
     $('start').classList.toggle('stop', running);
     ['link', 'paste', 'choose', 'outdir', 'login', 'lang'].forEach(id => { $(id).disabled = running; });
-    document.querySelectorAll('#step2 input, #step3 input, #step3 select').forEach(e => {
+    document.querySelectorAll('#step2 input, #step3 input, #step3 select, #adv input, #adv select, #clear-history').forEach(e => {
       e.disabled = running || (e.id === 'mode-single' && linkKind === 'profile');
     });
     if (s.version) $('version').textContent = t('ui.version', { v: s.version });
@@ -518,6 +599,10 @@ body.loading main { visibility: hidden; }
     } else if (s.phase === 'starting') {
       status = t('ui.status_starting');
       sub = t('ui.sub_starting');
+    } else if (running && s.paused) {
+      status = t('ui.status_paused');
+      sub = t('ui.sub_paused');
+      if (total > 0) pct = Math.min(100, finished / total * 100);
     } else if (running) {
       if (s.collecting) status = t('ui.status_scanning', { who, n: s.found_posts });
       else if (s.phase === 'collecting') status = t('ui.status_fetching_post');
@@ -544,6 +629,7 @@ body.loading main { visibility: hidden; }
     if (s.mode !== 'login') {
       const add = (key, n) => { const sp = el('span', t(key) + ' '); sp.appendChild(el('b', String(n))); counts.appendChild(sp); };
       add('ui.count_found', s.found_posts);
+      if (s.posts_known) add('ui.count_known', s.posts_known);
       add('ui.count_done', s.files_done);
       if (s.files_skipped) add('ui.count_skipped', s.files_skipped);
       if (s.posts_skipped) add('ui.count_unmatched', s.posts_skipped);
@@ -573,7 +659,10 @@ body.loading main { visibility: hidden; }
       if (errText2) notes.appendChild(note('err', [document.createTextNode(errText2)]));
     }
 
-    $('done-actions').hidden = running || s.mode === 'login' || !(s.files_done || s.files_skipped);
+    $('done-actions').hidden = running || s.mode === 'login' || !(s.files_done || s.files_skipped || s.failed_posts);
+    $('retry').hidden = running || !(s.failed_posts > 0);
+    $('run-actions').hidden = !(running && s.mode !== 'login' && (s.phase === 'collecting' || s.phase === 'downloading'));
+    $('pause').textContent = t(s.paused ? 'ui.resume' : 'ui.pause');
 
     if (!relabelOnly && s.logs && s.logs.length) {
       const log = $('log');

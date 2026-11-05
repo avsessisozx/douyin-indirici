@@ -22,6 +22,11 @@ PROFILE_WALL = "MS4wLjABAAAAprofile_wall_0000000001"
 PROFILE_PRIVATE = "MS4wLjABAAAAprofile_private_000001"
 PROFILE_CAPTCHA = "MS4wLjABAAAAprofile_captcha_000001"
 PROFILE_CAPTCHA_SLOW = "MS4wLjABAAAAprofile_captcha_slow01"   # bulmaca 15 sn sonra çözülür
+PROFILE_POPUP = "MS4wLjABAAAAprofile_popup_00000001"           # gerçek Douyin gibi giriş penceresi çıkar
+PROFILE_POPUP_TEXT = "MS4wLjABAAAAprofile_popup_text_001"      # bilinen kimlikler yok: pencere sadece yazısından tanınır
+PROFILE_FLAKY = "MS4wLjABAAAAprofile_flaky_0000000001"         # bir videosu /flaky-ok çağrılana kadar inmez
+PROFILE_HIST = "MS4wLjABAAAAprofile_hist_00000000001"          # geçmiş testleri için
+FLAKY_PREFIX = "74200000000000"
 
 # Gerçek Douyin sayfalarında hep bulunan, doğrulama SAYILMAMASI gereken görünmez öğeler.
 # (1.1.0'da Android bunları bulmaca sanıp ekranı kapatmıştı.)
@@ -45,6 +50,8 @@ class FakeDouyin:
         self.base = public_base.rstrip("/") or f"http://127.0.0.1:{self.port}"
         self.media_hits = {}
         self.captcha_passed = False
+        self.flaky_ok = False
+        self.popup_closed = 0
 
     def start(self):
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -54,9 +61,26 @@ class FakeDouyin:
         self.server.shutdown()
 
     # ------------------------------------------------------------ veri
+    def flaky_item(self, aid: str, i: int):
+        media = f"{self.base}/media"
+        item = samples.api_video(aid, base=media, desc=f"Video {i} #etiket", author="Dalgalı Kişi",
+                                 sec_uid=PROFILE_FLAKY, create_time=1717200000 + i * 86400)
+        if i == 2:
+            url = [f"{media}/flaky_{aid}.mp4"]
+            for br in item["video"]["bit_rate"]:
+                br["play_addr"]["url_list"] = list(url)
+            item["video"]["play_addr"]["url_list"] = list(url)
+            item["video"]["download_addr"]["url_list"] = list(url)
+        return item
+
     def posts_for(self, sec_uid: str):
         media = f"{self.base}/media"
         posts = []
+        if sec_uid == PROFILE_FLAKY:
+            for i in range(5):
+                aid = f"{FLAKY_PREFIX}{i:05d}"
+                posts.append(self.flaky_item(aid, i))
+            return posts
         for i in range(TOTAL_POSTS):
             aid = f"74100000000000{i:05d}"
             if i == 3:
@@ -99,6 +123,8 @@ class FakeDouyin:
                         return self.send(403, "no referer", "text/plain")
                     if name.startswith("forbidden"):
                         return self.send(403, "forbidden", "text/plain")
+                    if name.startswith("flaky") and not fake.flaky_ok:
+                        return self.send(403, "flaky", "text/plain")
                     if name.endswith(".mp4"):
                         return self.send(200, b"\x00\x00\x00\x18ftypmp42" + name.encode() * 50, "video/mp4")
                     if name.endswith(".jpeg") or "jpeg" in name:
@@ -130,12 +156,27 @@ class FakeDouyin:
 
                 if path == "/aweme/v1/web/aweme/detail/":
                     aid = q.get("aweme_id", "")
+                    if aid.startswith(FLAKY_PREFIX):
+                        item = fake.flaky_item(aid, int(aid[len(FLAKY_PREFIX):] or 0))
+                        return self.send(200, json.dumps({"aweme_detail": item}), "application/json")
                     item = samples.api_gallery(aid, base=f"{fake.base}/media", author="Not Sahibi",
                                                sec_uid=PROFILE_OK)
                     return self.send(200, json.dumps({"aweme_detail": item}), "application/json")
 
+                if path == "/flaky-ok":
+                    fake.flaky_ok = True
+                    return self.send(200, "{}", "application/json")
+
+                if path == "/popup-closed":
+                    fake.popup_closed += 1
+                    return self.send(200, "{}", "application/json")
+
                 if path.startswith("/user/"):
                     sec = path.split("/")[2]
+                    if sec in (PROFILE_POPUP, PROFILE_POPUP_TEXT):
+                        popup = POPUP_ID if sec == PROFILE_POPUP else POPUP_PLAIN
+                        return self.send(200, PROFILE_PAGE.replace("__SEC__", PROFILE_OK).replace(
+                            "__DECOYS__", DECOYS + popup), "text/html; charset=utf-8")
                     if sec in (PROFILE_CAPTCHA, PROFILE_CAPTCHA_SLOW) and not fake.captcha_passed:
                         delay = "15000" if sec == PROFILE_CAPTCHA_SLOW else "3000"
                         return self.send(200, CAPTCHA_PAGE.replace("__DELAY__", delay), "text/html; charset=utf-8")
@@ -150,6 +191,11 @@ class FakeDouyin:
                 if path == "/captcha-pass":
                     fake.captcha_passed = True
                     return self.send(200, "{}", "application/json")
+
+                if path.startswith("/video/") and path.split("/")[2].startswith(FLAKY_PREFIX):
+                    aid = path.split("/")[2]
+                    page = f"<html><head><title>video</title></head><body><script>fetch('/aweme/v1/web/aweme/detail/?aweme_id={aid}')</script>{DECOYS}</body></html>"
+                    return self.send(200, page, "text/html; charset=utf-8")
 
                 if path.startswith("/video/"):
                     aid = path.split("/")[2]
@@ -189,6 +235,17 @@ window.addEventListener('scroll', () => {
   if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 300) load();
 });
 </script></body></html>"""
+
+# Gerçek Douyin'in giriş penceresinin sadeleştirilmiş hali (1 sn sonra çıkar; sağ üstteki X imleci "pointer").
+# Kimlikler gerçek sayfadan alındı; sınıf adları gerçekte sürekli değiştiği için burada rastgele.
+_POPUP_BODY = """<div %ATTRS% style="position:fixed;left:40px;top:120px;width:700px;height:480px;background:#fff;z-index:9999;display:none">
+  <div style="position:relative;height:80px"><div style="padding:24px;font-size:20px">登录后免费畅享高清视频</div>
+    <div class="x9fK2" style="position:absolute;right:24px;top:20px;width:36px;height:36px;cursor:pointer"
+         onclick="this.closest('[data-popup]').remove(); fetch('/popup-closed')"><svg width="24" height="24"><path d="M4 4L20 20M20 4L4 20" stroke="#000"/></svg></div></div>
+  <div>扫码登录 · 验证码登录</div></div>
+<script>setTimeout(() => { const p = document.querySelector('[data-popup]'); if (p) p.style.display = 'block'; }, 1000);</script>"""
+POPUP_ID = _POPUP_BODY.replace("%ATTRS%", 'id="login-panel-new" data-popup="1"')
+POPUP_PLAIN = _POPUP_BODY.replace("%ATTRS%", 'class="zq81Pf" data-popup="1"')
 
 CAPTCHA_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>验证码中间页</title></head><body>
 <div id="captcha_container" style="width:300px;height:200px;background:#eee">doğrulama</div>

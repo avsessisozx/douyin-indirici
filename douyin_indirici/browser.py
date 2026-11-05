@@ -30,6 +30,35 @@ PROFILE_API = "/aweme/v1/web/user/profile/other/"
 # Gerçek Douyin sayfalarında görünmez güvenlik çerçeveleri ve boş doğrulama kutuları hep bulunur;
 # bunlar doğrulama sayılmaz. Android sürümündeki WebDouyin.BLOCK_JS ile birebir aynı olmalı
 # (tests/test_units.py bunu denetler).
+# Douyin'in giriş penceresini bulup kapatır (gerçek Douyin'de denendi: pencere #login-panel-new,
+# kapatma düğmesi sağ üstte, imleci "pointer" olan küçük kutu). Sınıf adları sürekli değiştiği için
+# önce sabit kimliklere, olmazsa pencerenin yazısına bakar. Android'deki DISMISS_JS ile aynı.
+DISMISS_JS = r"""() => {
+  const TEXTS = ['登录后免费畅享高清视频', '登录', '扫码登录', 'Log in to Douyin', 'Scan to Log In'];
+  const visible = e => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
+    return r.width > 200 && r.height > 40 && s.visibility !== 'hidden' && s.display !== 'none'; };
+  let start = document.querySelector('#login-panel-new, #douyin-login-new-id, #douyin_login_comp_flat_panel, [id^="douyin_login"], .douyin_login_new_class');
+  if (start && !visible(start)) start = null;
+  if (!start) {
+    start = [...document.querySelectorAll('div,span,p,h1,h2')].find(e => e.children.length === 0
+      && TEXTS.some(t => e.textContent.trim() === t) && visible(e)) || null;
+  }
+  if (!start) return { found: false, clicked: false };
+  // Başlıktan yukarı doğru çık; sağ üstte imleci "pointer" olan küçük kutu (X) olan ilk kutuyu kullan.
+  let box = start;
+  for (let i = 0; i < 9 && box && box !== document.body; i++, box = box.parentElement) {
+    const pr = box.getBoundingClientRect();
+    if (pr.width < 300 || pr.height < 150) continue;
+    if (pr.width > innerWidth * 0.97 && pr.height > innerHeight * 0.97) break;      // tam ekran perde: pencere değil
+    const x = [...box.querySelectorAll('*')].find(e => { const r = e.getBoundingClientRect();
+      return r.width >= 12 && r.width <= 56 && r.height >= 12 && r.height <= 56
+        && r.right > pr.right - 90 && r.top < pr.top + 90 && getComputedStyle(e).cursor === 'pointer'; });
+    if (x) { x.click(); return { found: true, clicked: true }; }
+  }
+  return { found: true, clicked: false };
+}"""
+
+
 BLOCK_JS = """(function(){
   function vis(el){
     if (!el) return false;
@@ -90,8 +119,9 @@ class ProfileResult:
     author_name: str = ""
     reported_count: int = 0
     collected: int = 0
-    reason: str = "end"          # end | limit | cancel | login_wall | private | empty | stalled
+    reason: str = "end"          # end | limit | cancel | login_wall | private | empty | stalled | up_to_date
     private: bool = False
+    sec_uid: str = ""
 
 
 @dataclass
@@ -103,6 +133,8 @@ class _ProfileState:
     author_name: str = ""
     reported_count: int = -1
     private: bool = False
+    known_run: int = 0           # üst üste kaç bilinen gönderi görüldü
+    up_to_date: bool = False     # yeni gönderilerin sonuna gelindi
     last_change: float = field(default_factory=time.monotonic)
 
 
@@ -114,11 +146,13 @@ class DouyinBrowser:
         log: Callable[[str, Any], None],
         cancel: threading.Event,
         on_captcha: Callable[[bool], None],
+        is_paused: Callable[[], bool] = lambda: False,
     ) -> None:
         self.data_dir = data_dir
         self.log = log
         self.cancel = cancel
         self.on_captcha = on_captcha
+        self.is_paused = is_paused
         self._pw = None
         self.context = None
         self.page = None
@@ -403,6 +437,7 @@ class DouyinBrowser:
                 now = time.monotonic()
                 if now - embedded_checked > 2:
                     embedded_checked = now
+                    await self._dismiss_popups(page)    # giriş penceresi sayfa açıldıktan biraz sonra çıkıyor
                     posts = await self._embedded_posts(page, aweme_id)
                     if posts:
                         return posts[0]
@@ -425,12 +460,15 @@ class DouyinBrowser:
         limit: int,
         on_items: Callable[[List[Dict[str, Any]]], None],
         idle_seconds: Optional[float] = None,
+        known_ids: Optional[set] = None,
+        stop_after_known: int = 0,
     ) -> ProfileResult:
         if idle_seconds is None:
             idle_seconds = float(os.environ.get("DOUYIN_INDIRICI_IDLE", "25"))
         self._check_alive()
         page = self.page
         st = _ProfileState()
+        known_ids = known_ids or set()
         tasks: List[asyncio.Task] = []
 
         def accept(items: List[Any]) -> None:
@@ -446,6 +484,12 @@ class DouyinBrowser:
                 st.items[aid] = item
                 st.order.append(aid)
                 new.append(item)
+                if aid in known_ids:
+                    st.known_run += 1
+                    if stop_after_known and st.known_run >= stop_after_known:
+                        st.up_to_date = True
+                else:
+                    st.known_run = 0
             if new:
                 st.last_change = time.monotonic()
                 if not st.author_name:
@@ -482,7 +526,7 @@ class DouyinBrowser:
             tasks.append(asyncio.ensure_future(handle(response)))
 
         page.on("response", on_response)
-        result = ProfileResult()
+        result = ProfileResult(sec_uid=sec_uid)
         try:
             self.log("info", msg("browser.profile_opening"))
             await self._goto(page, f"https://www.douyin.com/user/{sec_uid}")
@@ -537,12 +581,19 @@ class DouyinBrowser:
             self._check_alive()
             if limit and len(st.order) >= limit:
                 return "limit"
+            if st.up_to_date:
+                return "up_to_date"
             if st.has_more == 0 and st.responses > 0:
                 return "end"
             if st.private and not st.order:
                 return "private"
             if st.reported_count == 0 and time.monotonic() - st.last_change > 6:
                 return "empty"
+            if self.is_paused():
+                while self.is_paused() and not self.cancel.is_set():
+                    await asyncio.sleep(0.3)
+                st.last_change = time.monotonic()
+                continue
             before = len(st.order)
             if await self.wait_if_blocked(page, satisfied=lambda: len(st.order) > before):
                 st.last_change = time.monotonic()
@@ -566,20 +617,27 @@ class DouyinBrowser:
                     return "login_wall"
                 return "stalled" if st.responses == 0 else "end"
 
-    async def _dismiss_popups(self, page) -> None:
-        """Giriş yap kutusu gibi kaydırmayı engelleyen pencereleri kapatmayı dener."""
+    async def _dismiss_popups(self, page) -> bool:
+        """Giriş yap kutusu gibi kaydırmayı engelleyen pencereyi kapatır. Kapattıysa True."""
         try:
-            await page.evaluate(
-                """() => {
-                    const sel = ['.dy-account-close', '[class*="login"] [class*="close"]', '[aria-label="关闭"]'];
-                    for (const s of sel) for (const el of document.querySelectorAll(s)) {
-                        const r = el.getBoundingClientRect();
-                        if (r.width > 0 && r.height > 0) el.click();
-                    }
-                }"""
-            )
+            result = await page.evaluate(DISMISS_JS)
         except Exception:
-            pass
+            return False
+        if isinstance(result, dict) and result.get("clicked"):
+            self.log("info", msg("browser.popup_closed"))
+            return True
+        if isinstance(result, dict) and result.get("found"):
+            # X bulunamadı: Esc dene. (Pencerenin dışına tıklamayı bilerek denemiyoruz: sayfadaki bir bağlantıya
+            # denk gelip programı başka sayfaya götürebilir.)
+            try:
+                await page.keyboard.press("Escape")
+                await asyncio.sleep(0.4)
+                if not (await page.evaluate(DISMISS_JS) or {}).get("found"):
+                    self.log("info", msg("browser.popup_closed"))
+                    return True
+            except Exception:
+                pass
+        return False
 
     async def _ids_from_dom(self, page) -> List[str]:
         try:

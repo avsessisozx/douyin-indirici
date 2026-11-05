@@ -41,7 +41,9 @@ class IntegrationTests(unittest.TestCase):
 
         out = Path(self.tmp.name) / f"out_{time.monotonic_ns()}"
         engine = Engine()
-        base = {"out_dir": str(out), "content": "all", "quality": "highest", "compat": True, "limit": 0}
+        # Testler aynı veri klasörünü paylaşır; geçmiş açık kalırsa önceki testte inen gönderiler atlanır.
+        base = {"out_dir": str(out), "content": "all", "quality": "highest", "compat": True, "limit": 0,
+                "history": False}
         base.update(settings)
         error = engine.start(Job(link, mode, base))
         self.assertIsNone(error)
@@ -143,6 +145,140 @@ class IntegrationTests(unittest.TestCase):
         snap, out = self.run_job(f"https://www.douyin.com/note/{fake_douyin.NOTE_ID}", "profile", limit=2)
         self.assertEqual(snap["phase"], "done", snap["summary"])
         self.assertEqual(snap["found_posts"], 2)
+
+    # ------------------------------------------------------------ geçmiş
+    def test_history_skips_known_and_stops_early(self):
+        link = f"https://www.douyin.com/user/{fake_douyin.PROFILE_HIST}"
+        snap, out = self.run_job(link, "profile", history=True)
+        self.assertEqual(snap["phase"], "done", snap["summary"])
+        self.assertEqual(snap["files_done"], 17)      # 13 video + 3 resim + 1 hareketli
+        # İkinci çalışma başka klasöre: hiçbir şey inmemeli, tarama da erken bitmeli
+        snap2, out2 = self.run_job(link, "profile", history=True)
+        self.assertEqual(snap2["phase"], "done", snap2["summary"])
+        self.assertEqual(snap2["files_done"], 0)
+        self.assertEqual(snap2["posts_known"], snap2["found_posts"])
+        self.assertEqual(self.files(out2), [])
+        keys = [(l.get("msg") or {}).get("key") for l in snap2["logs"]]
+        self.assertIn("engine.history_known", keys)
+        self.assertIn("engine.up_to_date", keys)
+        # Geçmiş temizlenince hepsi yine iner
+        from douyin_indirici.history import History
+        h = History()
+        self.assertGreater(h.clear(), 0)
+        h.close()
+        snap3, out3 = self.run_job(link, "profile", history=True)
+        self.assertEqual(snap3["files_done"], snap["files_done"])
+
+    def test_history_off_downloads_again(self):
+        link = f"https://www.douyin.com/user/{fake_douyin.PROFILE_OK}"
+        snap, _ = self.run_job(link, "profile", history=False, limit=3)
+        snap2, _ = self.run_job(link, "profile", history=False, limit=3)
+        self.assertEqual(snap["files_done"], 3)
+        self.assertEqual(snap2["files_done"], 3)
+        self.assertEqual(snap2["posts_known"], 0)
+
+    # ------------------------------------------------------------ duraklat / tekrar dene
+    def _start_engine(self, link, mode, **settings):
+        from douyin_indirici.engine import Engine, Job
+        out = Path(self.tmp.name) / f"out_{time.monotonic_ns()}"
+        engine = Engine()
+        base = {"out_dir": str(out), "content": "all", "quality": "highest", "compat": True, "limit": 0,
+                "history": False}
+        base.update(settings)
+        self.assertIsNone(engine.start(Job(link, mode, base)))
+        return engine, out
+
+    def _wait(self, engine, timeout=120):
+        deadline = time.monotonic() + timeout
+        while engine.running and time.monotonic() < deadline:
+            time.sleep(0.2)
+        self.assertFalse(engine.running, "iş zamanında bitmedi")
+
+    def test_pause_and_resume(self):
+        engine, out = self._start_engine(f"https://www.douyin.com/user/{fake_douyin.PROFILE_OK}", "profile")
+        time.sleep(0.4)
+        engine.pause()
+        self.assertTrue(engine.snapshot()["paused"])
+        time.sleep(4)                       # duraklatılmışken ilerlememeli
+        first = engine.snapshot()
+        time.sleep(2)
+        second = engine.snapshot()
+        self.assertTrue(second["running"] and second["paused"])
+        self.assertEqual((first["found_posts"], first["files_done"]), (second["found_posts"], second["files_done"]))
+        self.assertLess(second["files_done"], fake_douyin.TOTAL_POSTS)
+        engine.resume()
+        self._wait(engine)
+        snap = engine.snapshot()
+        self.assertEqual(snap["phase"], "done", snap["summary"])
+        self.assertFalse(snap["paused"])
+        self.assertEqual(snap["found_posts"], fake_douyin.TOTAL_POSTS)
+        self.assertEqual(snap["files_failed"], 0)
+
+    def test_stop_while_paused(self):
+        engine, out = self._start_engine(f"https://www.douyin.com/user/{fake_douyin.PROFILE_OK}", "profile")
+        time.sleep(0.4)
+        engine.pause()
+        time.sleep(1)
+        engine.stop()
+        self._wait(engine, 30)
+        self.assertEqual(engine.snapshot()["phase"], "stopped")
+
+    def test_retry_failed(self):
+        from douyin_indirici.engine import MODE_RETRY
+        self.fake.flaky_ok = False
+        link = f"https://www.douyin.com/user/{fake_douyin.PROFILE_FLAKY}"
+        engine, out = self._start_engine(link, "profile")
+        self._wait(engine)
+        snap = engine.snapshot()
+        self.assertEqual(snap["files_done"], 4, snap["summary"])
+        self.assertEqual(snap["files_failed"], 1)
+        self.assertEqual(snap["failed_posts"], 1)
+        keys = [(l.get("msg") or {}).get("key") for l in snap["logs"]]
+        self.assertIn("engine.retrying", keys)           # bir kez kendiliğinden denendi
+        # Sunucu düzelince düğmeyle tekrar dene
+        urllib.request.urlopen(self.fake.base + "/flaky-ok").read()
+        from douyin_indirici.engine import Job
+        self.assertIsNone(engine.start(Job("", MODE_RETRY, {"out_dir": str(out), "content": "all", "quality": "highest",
+                                                           "compat": True, "limit": 0, "history": False})))
+        self._wait(engine)
+        snap2 = engine.snapshot()
+        self.assertEqual(snap2["phase"], "done", snap2["summary"])
+        self.assertEqual(snap2["failed_posts"], 0)
+        self.assertEqual(snap2["files_failed"], 0)
+        self.assertEqual(len([f for f in self.files(out) if f.endswith(".mp4")]), 5)
+
+    def test_retry_with_nothing_failed(self):
+        from douyin_indirici.engine import Engine, Job, MODE_RETRY
+        error = Engine().start(Job("", MODE_RETRY, {"out_dir": self.tmp.name}))
+        self.assertEqual(error.key, "engine.retry_none")
+
+    # ------------------------------------------------------------ giriş penceresi
+    def _popup_case(self, sec):
+        before = self.fake.popup_closed
+        snap, out = self.run_job(f"https://www.douyin.com/user/{sec}", "profile")
+        self.assertEqual(snap["phase"], "done", snap["summary"])
+        self.assertEqual(snap["files_done"], 17)
+        self.assertGreater(self.fake.popup_closed, before, "giriş penceresi kapatılmadı")
+        keys = [(l.get("msg") or {}).get("key") for l in snap["logs"]]
+        self.assertIn("browser.popup_closed", keys)
+
+    def test_login_popup_closed_by_id(self):
+        self._popup_case(fake_douyin.PROFILE_POPUP)
+
+    def test_login_popup_closed_by_text(self):
+        self._popup_case(fake_douyin.PROFILE_POPUP_TEXT)
+
+    def test_report_and_settings_endpoints(self):
+        from douyin_indirici import report
+        snap, _ = self.run_job(f"https://www.douyin.com/user/{fake_douyin.PROFILE_OK}", "profile", limit=2)
+        text = report.build([("Sürüm", "x")], {"out_dir": "C:/gizli", "sessionid": "ABC123"},
+                            {**snap, "logs": snap["logs"] + [{"t": "0", "level": "info", "text": "sessionid=ZZZ9 ttwid=QQ"}]},
+                            "tr")
+        self.assertIn("Douyin İndirici raporu", text)
+        self.assertNotIn("C:/gizli", text)
+        self.assertNotIn("ABC123", text)
+        self.assertNotIn("ZZZ9", text)
+        self.assertIn("files_done: 2", text)
 
     def test_stop(self):
         from douyin_indirici.engine import Engine, Job
