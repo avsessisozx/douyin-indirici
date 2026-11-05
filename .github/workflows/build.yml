@@ -225,6 +225,14 @@ jobs:
             dist/DouyinIndirici/DouyinIndirici.exe
             dist/DouyinIndirici-apk/*.apk
           body: |
+            **Yenilikler (${{ steps.ver.outputs.version }})**
+            - Geçmiş: indirilenler hatırlanır, aynı profilde sadece yeni gönderiler iner
+            - Duraklat / devam et ve "inemeyenleri tekrar dene"
+            - Büyük dosyalar parçalı ve paralel iner (Gelişmiş ayarlardan seçilir)
+            - Hata raporu kopyalama (şifre ve çerez içermez)
+            - Douyin "Giriş yap" penceresi kendiliğinden kapanır
+            - Doğrulama (bulmaca) çıkınca ses çalar
+
             **Windows:** `DouyinIndirici.exe` dosyasını indir, çift tıklayıp aç. Kurulum gerekmez.
             İlk açılışta Windows "Bilgisayarınız korundu" uyarısı verebilir: **Ek bilgi → Yine de çalıştır**.
 
