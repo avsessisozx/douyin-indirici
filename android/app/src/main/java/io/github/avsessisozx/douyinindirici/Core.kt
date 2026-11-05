@@ -2,9 +2,12 @@ package io.github.avsessisozx.douyinindirici
 
 import android.app.Application
 import android.content.Context
+import android.media.AudioManager
+import android.media.ToneGenerator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 class App : Application() {
@@ -19,6 +22,9 @@ object Core {
     lateinit var app: Context; private set
     lateinit var tr: Tr; private set
     lateinit var engine: Engine; private set
+    /** İndirme geçmişi (gecmis.sqlite3). Testler TestHooks.history ile değiştirebilir. */
+    val history: HistoryStore get() = TestHooks.history ?: sqlHistory
+    private lateinit var sqlHistory: HistoryStore
     @Volatile var web: DouyinWeb? = null
     @Volatile var settings: SettingsValues = SettingsValues()
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -36,11 +42,24 @@ object Core {
             try { app.assets.open("ceviriler/$code.json").bufferedReader(Charsets.UTF_8).use { it.readText() } } catch (e: Exception) { null }
         }, langs)
         settings = SettingsValues.fromJson(app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("json", null), langs)
+        sqlHistory = SqliteHistory(app)
         engine = Engine(
             webProvider = { web },
             sinkFactory = { TestHooks.sinkFactory?.invoke() ?: MediaStoreSink(app) },
             scope = scope,
+            historyProvider = { history },
+            alertSound = { alertSound() },
         )
+    }
+
+    /** Doğrulama (bulmaca) çıkınca dikkat çekmek için kısa bir ses. */
+    private fun alertSound() {
+        val tone = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80)
+        tone.startTone(ToneGenerator.TONE_PROP_BEEP2, 600)
+        scope.launch {
+            kotlinx.coroutines.delay(1000)
+            tone.release()
+        }
     }
 
     fun languages(): List<String> = tr.available().map { it.first }

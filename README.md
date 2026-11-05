@@ -8,6 +8,11 @@ Douyin'deki (Çin TikTok'u) videoları ve resimleri indiren, Türkçe ve İngili
 - **İçerik seçimi:** video ve resim, sadece video ya da sadece resim.
 - Filigransız indirir. Hareketli fotoğrafların (Live Photo) videosunu da alır.
 - Daha önce inen dosyaları tekrar indirmez; yarıda kalan işe kaldığı yerden devam edebilirsin.
+- **Geçmiş:** daha önce indirdiğin gönderileri hatırlar; aynı profili tekrar indirince sadece yenileri iner (başka klasöre bile olsa). Ayarlardan kapatılabilir.
+- **Duraklat / devam et** ve **inemeyenleri tekrar dene** düğmeleri.
+- **Hızlı indirme:** büyük dosyalar parçalara bölünüp aynı anda indirilir; Gelişmiş ayarlardan sayısı seçilir.
+- Hata olursa **Rapor kopyala** düğmesi sorunu anlatan (şifre/çerez içermeyen) bir metin verir.
+- Douyin'in "Giriş yap" penceresini kendisi kapatır; doğrulama (bulmaca) çıkınca ses çalar.
 
 ## İndirme ve kurulum
 

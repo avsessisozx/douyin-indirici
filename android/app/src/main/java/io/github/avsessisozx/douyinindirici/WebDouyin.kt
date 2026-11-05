@@ -43,6 +43,7 @@ class WebDouyin(private val webView: WebView, private val overlay: OverlayHost) 
 
     override var listener: WebListener? = null
     override var cancel: AtomicBoolean = AtomicBoolean(false)
+    override var isPaused: () -> Boolean = { false }
     override val userAgent: String
 
     private var captureHandler: ((String, JSONObject) -> Unit)? = null
@@ -285,10 +286,15 @@ class WebDouyin(private val webView: WebView, private val overlay: OverlayHost) 
         var authorName = ""
         var reportedCount = -1
         var private = false
+        var knownRun = 0            // üst üste kaç bilinen gönderi görüldü
+        var upToDate = false        // yeni gönderilerin sonuna gelindi
         var lastChange = SystemClock.elapsedRealtime()
     }
 
-    override suspend fun collectProfile(secUid: String, limit: Int, onItems: (List<JSONObject>) -> Unit): ProfileResult =
+    override suspend fun collectProfile(
+        secUid: String, limit: Int, onItems: (List<JSONObject>) -> Unit,
+        knownIds: Set<String>, stopAfterKnown: Int,
+    ): ProfileResult =
         withContext(Dispatchers.Main) {
             val idleMs = ((TestHooks.idleSeconds ?: 25.0) * 1000).toLong()
             val st = ProfileState()
@@ -302,6 +308,12 @@ class WebDouyin(private val webView: WebView, private val overlay: OverlayHost) 
                     st.items[aid] = item
                     st.order += aid
                     fresh += item
+                    if (aid in knownIds) {
+                        st.knownRun++
+                        if (stopAfterKnown > 0 && st.knownRun >= stopAfterKnown) st.upToDate = true
+                    } else {
+                        st.knownRun = 0
+                    }
                 }
                 if (fresh.isNotEmpty()) {
                     st.lastChange = now
@@ -329,7 +341,7 @@ class WebDouyin(private val webView: WebView, private val overlay: OverlayHost) 
                 }
             }
 
-            val result = ProfileResult()
+            val result = ProfileResult(secUid = secUid)
             try {
                 listener?.log("info", msg("browser.profile_opening"))
                 val target = "https://www.douyin.com/user/$secUid"
@@ -371,9 +383,15 @@ class WebDouyin(private val webView: WebView, private val overlay: OverlayHost) 
         while (true) {
             if (cancel.get()) return "cancel"
             if (limit > 0 && st.order.size >= limit) return "limit"
+            if (st.upToDate) return "up_to_date"
             if (st.hasMore == 0 && st.responses > 0) return "end"
             if (st.private && st.order.isEmpty()) return "private"
             if (st.reportedCount == 0 && now - st.lastChange > 6000) return "empty"
+            if (isPaused()) {
+                while (isPaused() && !cancel.get()) delay(300)
+                st.lastChange = now
+                continue
+            }
             val before = st.order.size
             if (waitIfBlocked(satisfied = { st.order.size > before })) { st.lastChange = now; continue }
             dismissPopup()

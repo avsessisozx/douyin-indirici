@@ -50,7 +50,8 @@ class EndToEndTest {
         out = File(ctx.getExternalFilesDir(null), "e2e/${System.nanoTime()}")
         TestHooks.sinkFactory = { FileSink(out) }
         Core.init(ctx)
-        Core.saveSettings(SettingsValues(lang = "tr"))
+        TestHooks.history = MemoryHistory()          // her test boş geçmişle başlar; eski işlerden gönderi atlanmasın
+        Core.saveSettings(SettingsValues(lang = "tr", history = false))
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             inst.uiAutomation.grantRuntimePermission(ctx.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -64,6 +65,7 @@ class EndToEndTest {
         }
         scenario?.close()
         TestHooks.sinkFactory = null
+        TestHooks.history = null
     }
 
     // ---------------------------------------------------------------- yardımcılar

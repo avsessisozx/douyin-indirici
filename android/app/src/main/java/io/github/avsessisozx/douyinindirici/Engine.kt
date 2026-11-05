@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -14,6 +15,7 @@ import java.io.StringWriter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -30,19 +32,26 @@ data class ProfileResult(
     var authorName: String = "",
     var reportedCount: Int = 0,
     var collected: Int = 0,
-    var reason: String = "end",   // end | limit | cancel | login_wall | private | empty | stalled
+    var reason: String = "end",   // end | limit | cancel | login_wall | private | empty | stalled | up_to_date
     var private: Boolean = false,
+    var secUid: String = "",
 )
 
 /** Douyin sayfalarını açıp veriyi toplayan taraf (Android'de gizli WebView, testlerde sahte). */
 interface DouyinWeb {
     var listener: WebListener?
     var cancel: AtomicBoolean
+    /** Duraklatıldığında true döner; tarama döngüsü bu sırada kaydırmayı bekletir. */
+    var isPaused: () -> Boolean
     val userAgent: String
     suspend fun prepare()
     suspend fun resolve(p: Links.Parsed): Links.Parsed
     suspend fun getPost(awemeId: String, url: String, quiet: Boolean = false): JSONObject
-    suspend fun collectProfile(secUid: String, limit: Int, onItems: (List<JSONObject>) -> Unit): ProfileResult
+    /** knownIds: önceden inmiş gönderiler; stopAfterKnown > 0 ise üst üste bu kadar bilinen gönderi görünce tarama biter ("up_to_date"). */
+    suspend fun collectProfile(
+        secUid: String, limit: Int, onItems: (List<JSONObject>) -> Unit,
+        knownIds: Set<String> = emptySet(), stopAfterKnown: Int = 0,
+    ): ProfileResult
     suspend fun loginSession()
     fun cookiesFor(url: String): String?
 }
@@ -52,17 +61,27 @@ class Engine(
     private val webProvider: () -> DouyinWeb?,
     private val sinkFactory: () -> MediaSink,
     private val scope: CoroutineScope,
-    private val workers: Int = 3,
+    /** 0 = ayarlardaki "aynı anda inen gönderi" sayısı. */
+    private val workers: Int = 0,
+    private val historyProvider: () -> HistoryStore? = { null },
+    private val alertSound: () -> Unit = {},
 ) {
     data class Job(val link: String, val mode: String, val settings: SettingsValues)
 
     private val lock = Any()
     private var cancel = AtomicBoolean(false)
+    private val pauseFlag = AtomicBoolean(false)
+    @Volatile private var known: Set<String> = emptySet()
+    @Volatile private var jobSecUid = ""
+    @Volatile private var soundOn = false
+    @Volatile internal var history: HistoryStore? = null
+    internal class Failed(val n: Int, val name: String)
+    internal val failed = ConcurrentHashMap<String, Failed>()      // inemeyen gönderiler: kimlik -> dosya sayısı, ad
 
     @Volatile var running = false; private set
     @Volatile var phase = "idle"; private set
     @Volatile var mode = ""; private set
-    @Volatile var captcha = false
+    @Volatile var captcha = false; private set
     @Volatile var loginWall = false; private set
     @Volatile var author = ""; private set
     @Volatile var folder = ""; private set
@@ -73,6 +92,7 @@ class Engine(
     val foundPosts = AtomicInteger()
     val postsDone = AtomicInteger()
     val postsSkipped = AtomicInteger()
+    val postsKnown = AtomicInteger()
     val filesTotal = AtomicInteger()
     val filesDone = AtomicInteger()
     val filesSkipped = AtomicInteger()
@@ -86,7 +106,8 @@ class Engine(
     private fun reset() {
         phase = "idle"; mode = ""; captcha = false; loginWall = false; author = ""; folder = ""
         collecting = false; summary = null; current = ""; lastLocation = null
-        for (a in listOf(foundPosts, postsDone, postsSkipped, filesTotal, filesDone, filesSkipped, filesFailed)) a.set(0)
+        known = emptySet(); jobSecUid = ""
+        for (a in listOf(foundPosts, postsDone, postsSkipped, postsKnown, filesTotal, filesDone, filesSkipped, filesFailed)) a.set(0)
         currentBytes.set(0); currentTotal.set(0)
         synchronized(lock) {
             logOffset += logs.size
@@ -136,6 +157,9 @@ class Engine(
             .put("found_posts", foundPosts.get())
             .put("posts_done", postsDone.get())
             .put("posts_skipped", postsSkipped.get())
+            .put("posts_known", postsKnown.get())
+            .put("paused", pauseFlag.get())
+            .put("failed_posts", failed.size)
             .put("collecting", collecting)
             .put("files_total", filesTotal.get())
             .put("files_done", filesDone.get())
@@ -154,22 +178,48 @@ class Engine(
         synchronized(lock) {
             if (running) return msg("engine.already_running")
         }
-        if (job.mode != MODE_LOGIN) {
+        if (job.mode != MODE_LOGIN && job.mode != MODE_RETRY) {
             val p = Links.parse(job.link)
             if (!p.ok) return p.error
             if (job.mode == MODE_SINGLE && p.kind == Links.PROFILE) return msg("engine.single_needs_post")
         }
+        val ids: List<String> = if (job.mode == MODE_RETRY) failed.keys.toList() else emptyList()
+        if (job.mode == MODE_RETRY && ids.isEmpty()) return msg("engine.retry_none")
         synchronized(lock) {
             if (running) return msg("engine.already_running")
+            if (job.mode != MODE_RETRY) failed.clear()
             reset()
             cancel = AtomicBoolean(false)
+            pauseFlag.set(false)
             running = true
             phase = "starting"
             mode = job.mode
         }
         val c = cancel
-        scope.launch { runJob(job, c) }
+        scope.launch { runJob(job, c, ids) }
         return null
+    }
+
+    /** İşi duraklatır: o an inen dosya biter, yenisi başlamaz. */
+    fun pause() {
+        if (running && pauseFlag.compareAndSet(false, true)) log("warn", msg("engine.paused"))
+    }
+
+    fun resume() {
+        if (pauseFlag.compareAndSet(true, false)) log("info", msg("engine.resumed"))
+    }
+
+    fun isPaused(): Boolean = pauseFlag.get() && !cancel.get()
+
+    internal suspend fun waitPause() {
+        while (pauseFlag.get() && !cancel.get()) delay(300)
+    }
+
+    internal fun setCaptcha(value: Boolean) {
+        if (value && !captcha && soundOn) {
+            try { alertSound() } catch (e: Throwable) { /* ses çalınamazsa sorun değil */ }
+        }
+        captcha = value
     }
 
     fun stop() {
@@ -179,16 +229,18 @@ class Engine(
         }
     }
 
-    private suspend fun runJob(job: Job, cancel: AtomicBoolean) {
+    private suspend fun runJob(job: Job, cancel: AtomicBoolean, retryIds: List<String>) {
         var settings = job.settings
+        soundOn = settings.sound
         if (job.mode == MODE_SINGLE) settings = settings.copy(content = Media.CONTENT_ALL, limit = 0)
         var web: DouyinWeb? = null
         try {
             web = webProvider() ?: throw DouyinError(msg("android.no_window"))
             web.cancel = cancel
+            web.isPaused = { isPaused() }
             web.listener = object : WebListener {
                 override fun log(level: String, m: Msg) = this@Engine.log(level, m)
-                override fun captcha(active: Boolean) { this@Engine.captcha = active }
+                override fun captcha(active: Boolean) { this@Engine.setCaptcha(active) }
             }
             web.prepare()
             if (job.mode == MODE_LOGIN) {
@@ -198,7 +250,9 @@ class Engine(
                 log("ok", summary!!)
                 return
             }
-            downloadJob(web, job, settings, cancel)
+            history = openHistory(settings)
+            if (job.mode == MODE_RETRY) retryJob(web, retryIds, settings, cancel)
+            else downloadJob(web, job, settings, cancel)
         } catch (e: DouyinError) {
             if (cancel.get()) finishStopped() else {
                 phase = "error"; summary = e.m; log("error", e.m)
@@ -216,10 +270,22 @@ class Engine(
             }
         } finally {
             web?.listener = null
+            history = null
+            pauseFlag.set(false)
             captcha = false
             collecting = false
             current = ""
             running = false
+        }
+    }
+
+    private fun openHistory(s: SettingsValues): HistoryStore? {
+        if (!s.history) return null
+        return try {
+            historyProvider()
+        } catch (e: Throwable) {      // geçmiş dosyası açılamazsa geçmişsiz devam et
+            log("warn", msg("engine.history_failed", "error" to (e.message ?: e.javaClass.simpleName)))
+            null
         }
     }
 
@@ -233,10 +299,11 @@ class Engine(
         val parsed = web.resolve(Links.parse(job.link))
         val sink = sinkFactory()
         val queue = Channel<Media.Post?>(Channel.UNLIMITED)
-        val pool = DownloadPool(this, web, sink, cancel)
+        val pool = DownloadPool(this, web, sink, cancel, s)
+        val n = if (workers > 0) workers else s.parallel
 
         coroutineScope {
-            val ws = List(workers) { launch(Dispatchers.IO) { pool.worker(queue) } }
+            val ws = List(n) { launch(Dispatchers.IO) { pool.worker(queue) } }
             if (job.mode == MODE_SINGLE) {
                 if (parsed.kind == Links.PROFILE) throw DouyinError(msg("engine.short_to_profile"))
                 phase = "collecting"
@@ -256,17 +323,34 @@ class Engine(
                 }
                 phase = "collecting"
                 collecting = true
-                val result = web.collectProfile(secUid, s.limit) { items -> enqueue(queue, items, s) }
+                known = emptySet()
+                jobSecUid = secUid
+                var stopKnown = 0
+                val h = history
+                if (h != null && secUid.isNotEmpty()) {
+                    known = h.known(secUid)
+                    if (known.isNotEmpty()) {
+                        log("info", msg("engine.history_known", "n" to known.size))
+                        if (h.wasScanned(secUid)) stopKnown = KNOWN_STOP
+                    }
+                }
+                val result = web.collectProfile(secUid, s.limit, { items -> enqueue(queue, items, s) }, known, stopKnown)
                 collecting = false
                 if (result.authorName.isNotEmpty() && author.isEmpty()) author = result.authorName
                 reportProfile(result)
             }
-            repeat(workers) { queue.send(null) }
+            repeat(n) { queue.send(null) }
             phase = "downloading"
             ws.joinAll()
         }
 
         if (cancel.get()) { finishStopped(); return }
+        if (failed.isNotEmpty()) {
+            log("info", msg("engine.retrying", "n" to failed.size))
+            retryPass(web, sink, s, cancel, null)
+            if (cancel.get()) { finishStopped(); return }
+        }
+        if (postsKnown.get() > 0) log("info", msg("engine.history_skipped", "n" to postsKnown.get()))
         phase = "done"
         summary = msg("summary", "done" to filesDone.get(), "skipped" to filesSkipped.get(),
             "failed" to filesFailed.get(), "unmatched" to postsSkipped.get())
@@ -274,6 +358,50 @@ class Engine(
             phase = if (filesFailed.get() > 0 || foundPosts.get() == 0) "error" else "done"
         }
         log(if (phase == "done") "ok" else "error", summary!!)
+    }
+
+    /** "İnemeyenleri tekrar dene": önceki işte inemeyen gönderileri baştan alıp indirir. */
+    private suspend fun retryJob(web: DouyinWeb, ids: List<String>, s: SettingsValues, cancel: AtomicBoolean) {
+        phase = "downloading"
+        log("info", msg("engine.retrying", "n" to ids.size))
+        retryPass(web, sinkFactory(), s, cancel, ids)
+        if (cancel.get()) { finishStopped(); return }
+        phase = "done"
+        summary = msg("summary", "done" to filesDone.get(), "skipped" to filesSkipped.get(),
+            "failed" to filesFailed.get(), "unmatched" to postsSkipped.get())
+        log(if (failed.isEmpty()) "ok" else "error", summary!!)
+    }
+
+    /** İnemeyen gönderilerin sayfasını yeniden açıp (adresler eskimiş olabilir) bir kez daha indirir. */
+    private suspend fun retryPass(web: DouyinWeb, sink: MediaSink, s: SettingsValues, cancel: AtomicBoolean, only: List<String>?) {
+        val ids = only ?: failed.keys.toList()
+        val queue = Channel<Media.Post?>(Channel.UNLIMITED)
+        val pool = DownloadPool(this, web, sink, cancel, s)
+        val n = if (workers > 0) workers else s.parallel
+        coroutineScope {
+            val ws = List(n) { launch(Dispatchers.IO) { pool.worker(queue) } }
+            try {
+                for (id in ids) {
+                    if (cancel.get()) break
+                    waitPause()
+                    val item = try {
+                        web.getPost(id, "https://www.douyin.com/video/$id", true)
+                    } catch (e: DouyinError) {
+                        log("warn", msg("engine.download_failed", "name" to id, "error" to e.m))
+                        continue
+                    }
+                    val post = Media.buildPost(item, Media.CONTENT_ALL, s.quality, s.compat)
+                    if (post.awemeId.isEmpty() || post.skippedReason != null) continue
+                    val prev = failed.remove(id)
+                    if (prev != null) filesFailed.addAndGet(-prev.n)
+                    else filesTotal.addAndGet(post.files.size)
+                    queue.trySend(post)
+                }
+            } finally {
+                repeat(n) { queue.send(null) }
+            }
+            ws.joinAll()
+        }
     }
 
     private fun reportProfile(r: ProfileResult) {
@@ -289,7 +417,9 @@ class Engine(
                 else log("warn", msg("engine.login_wall", "n" to r.collected))
             }
             "limit" -> log("info", msg("engine.limit_reached", "n" to r.collected))
+            "up_to_date" -> log("ok", msg("engine.up_to_date", "n" to r.collected))
             "end", "stalled" -> {
+                if (r.reason == "end" && r.secUid.isNotEmpty()) history?.setScanned(r.secUid, r.authorName.ifEmpty { author })
                 if (r.reportedCount > 0) log("ok", msg("engine.profile_scanned_total", "n" to r.collected, "total" to r.reportedCount))
                 else log("ok", msg("engine.profile_scanned", "n" to r.collected))
             }
@@ -302,6 +432,10 @@ class Engine(
             if (post.awemeId.isEmpty()) continue
             foundPosts.incrementAndGet()
             if (author.isEmpty() && post.authorName.isNotEmpty()) author = post.authorName
+            if (post.awemeId in known) {
+                postsKnown.incrementAndGet()
+                continue
+            }
             val reason = post.skippedReason
             if (reason != null) {
                 postsSkipped.incrementAndGet()
@@ -313,6 +447,7 @@ class Engine(
         }
     }
 
+    internal fun currentSecUid(): String = jobSecUid
     internal fun setFolder(f: String) { if (folder.isEmpty()) folder = f }
     internal fun setCurrent(name: String) { current = name }
     internal fun setLastLocation(l: String?) { if (l != null) lastLocation = l }
@@ -321,6 +456,8 @@ class Engine(
         const val MODE_SINGLE = "single"
         const val MODE_PROFILE = "profile"
         const val MODE_LOGIN = "login"
+        const val MODE_RETRY = "retry"
+        const val KNOWN_STOP = 10      // üst üste bu kadar bilinen gönderi görünce "yenilerin sonu" sayılır
     }
 }
 
@@ -330,6 +467,7 @@ class DownloadPool(
     private val web: DouyinWeb,
     private val sink: MediaSink,
     private val cancel: AtomicBoolean,
+    private val settings: SettingsValues,
 ) {
     private fun headers(url: String): Map<String, String> {
         val h = linkedMapOf(
@@ -345,19 +483,28 @@ class DownloadPool(
         for (post in queue) {
             if (post == null) return
             if (cancel.get()) continue
+            eng.waitPause()
             downloadPost(post)
         }
     }
 
-    private fun downloadPost(post: Media.Post) {
+    private suspend fun downloadPost(post: Media.Post) {
         val folder = Media.authorFolder(post.authorName.ifEmpty { eng.author }, post.authorSecUid)
         eng.setFolder(MediaStoreSink.BASE + folder)
         val results = mutableListOf<String>()
         for (media in post.files) {
             if (cancel.get()) return
+            eng.waitPause()
             results += downloadFile(folder, media)
         }
         eng.postsDone.incrementAndGet()
+        val failedN = results.count { it == "failed" }
+        if (failedN > 0) {
+            eng.failed[post.awemeId] = Engine.Failed(failedN, post.stem)
+        } else if (results.isNotEmpty()) {
+            eng.failed.remove(post.awemeId)
+            try { eng.history?.mark(eng.currentSecUid().ifEmpty { post.authorSecUid }, post.awemeId, post.authorName) } catch (e: Throwable) { }
+        }
         if (results.isNotEmpty() && results.none { it == "failed" }) {
             val key = when {
                 results.any { it == "downloaded" } -> if (post.isGallery) "engine.downloaded_gallery" else "engine.downloaded_video"
@@ -394,7 +541,7 @@ class DownloadPool(
         val result = Fetcher.fetch(urls, rel, media.ext, fallbackExt, headers(urls.first()), sink, cancel, { done, total ->
             eng.currentBytes.set(done)
             eng.currentTotal.set(if (total > 0) total else media.expectedSize)
-        })
+        }, chunks = settings.chunks)
         if (result.ok) {
             eng.filesDone.incrementAndGet()
             eng.setLastLocation(result.location)

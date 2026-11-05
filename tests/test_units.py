@@ -270,5 +270,141 @@ class BrowserHealthTests(unittest.TestCase):
             del os.environ["DOUYIN_INDIRICI_CHECK_ELF"]
 
 
+class HistoryTests(unittest.TestCase):
+    def test_mark_known_scanned_clear(self):
+        from douyin_indirici.history import History
+        with tempfile.TemporaryDirectory() as d:
+            h = History(Path(d) / "g.sqlite3")
+            try:
+                h.mark("A", "1", "x")
+                h.mark("A", "2")
+                h.mark("A", "2")          # tekrar işaretlemek sayıyı artırmaz
+                h.mark("B", "1")
+                self.assertEqual(h.known("A"), {"1", "2"})
+                self.assertEqual(h.known("yok"), set())
+                self.assertEqual(h.count(), 3)
+                self.assertFalse(h.was_scanned("A"))
+                h.set_scanned("A", "x")
+                self.assertTrue(h.was_scanned("A"))
+                self.assertFalse(h.was_scanned("B"))
+                self.assertEqual(h.clear(), 3)
+                self.assertEqual(h.count(), 0)
+                self.assertFalse(h.was_scanned("A"))
+            finally:
+                h.close()
+
+    def test_survives_reopen(self):
+        from douyin_indirici.history import History
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "g.sqlite3"
+            h = History(path)
+            h.mark("A", "1")
+            h.close()
+            h2 = History(path)
+            try:
+                self.assertEqual(h2.known("A"), {"1"})
+            finally:
+                h2.close()
+
+
+class ReportTests(unittest.TestCase):
+    def test_secrets_are_removed_and_out_dir_dropped(self):
+        from douyin_indirici import report
+        snap = {"running": False, "phase": "done", "logs": [
+            {"t": "10:00:00", "level": "debug", "text": "Cookie: sessionid=ABC123SECRET; ttwid=XYZ; msToken=tok"},
+            {"t": "10:00:01", "level": "info", "msg": {"key": "engine.stopping", "params": {}}},
+        ], "summary": None}
+        text = report.build([("Sürüm", "9.9")], {"out_dir": "C:/Gizli/klasor", "limit": 3}, snap, "tr")
+        self.assertIn("Sürüm: 9.9", text)
+        for secret in ("ABC123SECRET", "XYZ", "tok", "Gizli"):
+            self.assertNotIn(secret, text)
+        self.assertIn("[silindi]", text)
+
+    def test_long_log_is_cut_from_the_front(self):
+        from douyin_indirici import report
+        logs = [{"t": "00:00:00", "level": "info", "text": f"satir {i} " + "x" * 200} for i in range(2000)]
+        text = report.build([], {}, {"logs": logs}, "tr")
+        self.assertLessEqual(len(text), 160_000)
+        self.assertIn("satir 1999", text)
+        self.assertNotIn("satir 0 ", text)
+
+
+class SettingsTests(unittest.TestCase):
+    def test_new_settings_are_clamped(self):
+        out = paths.clean_settings({"parallel": 5, "chunks": 99, "history": False, "sound": 0})
+        self.assertEqual((out["parallel"], out["chunks"]), (3, 4))      # geçersiz seçenek: varsayılan
+        self.assertIs(out["history"], False)
+        self.assertIs(out["sound"], False)
+        ok = paths.clean_settings({"parallel": 8, "chunks": 1})
+        self.assertEqual((ok["parallel"], ok["chunks"]), (8, 1))
+        default = paths.clean_settings({})
+        self.assertEqual((default["parallel"], default["chunks"], default["history"], default["sound"]), (3, 4, True, True))
+
+
+class ChunkedFetchTests(unittest.TestCase):
+    DATA = os.urandom(5 * 1024 * 1024 + 123)
+
+    @classmethod
+    def setUpClass(cls):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        data = cls.DATA
+        cls.hits = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                rng = self.headers.get("Range")
+                cls.hits.append((self.path, rng))
+                if rng and self.path != "/noranges":
+                    a, b = (int(x) for x in rng.split("=")[1].split("-"))
+                    body = data[a:b + 1]
+                    self.send_response(206)
+                    self.send_header("Content-Range", f"bytes {a}-{b}/{len(data)}")
+                else:
+                    body = data
+                    self.send_response(200)
+                self.send_header("Content-Type", "video/mp4")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+        cls.base = f"http://127.0.0.1:{cls.server.server_address[1]}"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+
+    def run_fetch(self, path, chunks):
+        from douyin_indirici.fetcher import fetch
+        d = Path(tempfile.mkdtemp())
+        self.hits.clear()
+        result = fetch([self.base + path], d / "v", ext=".mp4", fallback_ext=".mp4", headers={},
+                       cancel=threading.Event(), chunks=chunks)
+        return result, d
+
+    def test_chunked_download_is_identical_and_uses_parts(self):
+        result, d = self.run_fetch("/a", 4)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.path.read_bytes(), self.DATA)
+        parts = [h for h in self.hits if h[1] and h[1] != "bytes=0-0"]
+        self.assertGreaterEqual(len(parts), 4)
+        self.assertEqual([p.name for p in d.iterdir()], ["v.mp4"])      # .part kalıntısı yok
+
+    def test_server_without_ranges_falls_back_to_single_stream(self):
+        result, _ = self.run_fetch("/noranges", 4)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.path.read_bytes(), self.DATA)
+
+    def test_single_connection_mode(self):
+        result, _ = self.run_fetch("/a", 1)
+        self.assertTrue(result.ok)
+        self.assertEqual(result.path.read_bytes(), self.DATA)
+        self.assertTrue(all(h[1] is None for h in self.hits))
+
+
 if __name__ == "__main__":
     unittest.main()

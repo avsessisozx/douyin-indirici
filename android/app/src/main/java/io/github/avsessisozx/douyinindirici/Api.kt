@@ -1,5 +1,6 @@
 package io.github.avsessisozx.douyinindirici
 
+import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.webkit.JavascriptInterface
@@ -86,6 +87,56 @@ class Api(private val host: ApiHost) {
 
             "/api/stop" -> {
                 engine.stop()
+                200 to JSONObject().put("ok", true)
+            }
+
+            "/api/pause" -> {
+                engine.pause()
+                200 to JSONObject().put("ok", true)
+            }
+
+            "/api/resume" -> {
+                engine.resume()
+                200 to JSONObject().put("ok", true)
+            }
+
+            "/api/retry" -> {
+                val e = engine.start(Engine.Job("", Engine.MODE_RETRY, Core.settings))
+                if (e != null) return err(400, e)
+                host.requestNotificationPermission()
+                host.startDownloadService()
+                200 to JSONObject().put("ok", true)
+            }
+
+            "/api/history-count" -> {
+                val n = try { Core.history.count() } catch (e: Exception) { 0 }
+                200 to JSONObject().put("count", n)
+            }
+
+            "/api/history-clear" -> {
+                if (engine.running) return err(400, msg("engine.already_running"))
+                val n = try { Core.history.clear() } catch (e: Exception) {
+                    return err(400, msg("engine.history_failed", "error" to (e.message ?: e.javaClass.simpleName)))
+                }
+                200 to JSONObject().put("message", msg("server.history_cleared", "n" to n).toJson()).put("count", 0)
+            }
+
+            "/api/report" -> {
+                val lang = Core.lang()
+                val info = listOf(
+                    "Sürüm" to Core.version(),
+                    "Sistem" to "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT}) · " +
+                        "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}",
+                    "Dil" to lang,
+                )
+                val text = Report.build(info, Core.settings.toJson(), engine.snapshot(0)) { k, p -> Core.tr.text(k, lang, p) }
+                200 to JSONObject().put("text", text).put("lines", text.count { it == '\n' })
+            }
+
+            "/api/copy" -> {
+                val text = data?.optString("text", "") ?: ""
+                val cm = Core.app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("rapor", text))
                 200 to JSONObject().put("ok", true)
             }
 
