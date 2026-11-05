@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="io.github.avsessisozx.douyinindirici.EngineTest" tests="17" skipped="0" failures="0" errors="0" timestamp="2026-11-05T17:55:29.851Z" hostname="runnervm7aw5e" time="9.337">
+  <properties/>
+  <testcase name="historyOffDownloadsAgain" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.219"/>
+  <testcase name="retryModeNeedsFailedPosts" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.002"/>
+  <testcase name="captchaPlaysSoundOnlyWhenEnabled" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.105"/>
+  <testcase name="historyStoreBasics" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.001"/>
+  <testcase name="stopMidway" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="1.262"/>
+  <testcase name="contentFilterAndLimit" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.052"/>
+  <testcase name="failedPostsAreRetriedAutomaticallyAndOnDemand" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.053"/>
+  <testcase name="settingsClamp" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.001"/>
+  <testcase name="singlePostIgnoresProfileFilters" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.051"/>
+  <testcase name="historySkipsKnownPostsAndStopsEarly" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.104"/>
+  <testcase name="profileDownloadsEverythingAndSkipsOnSecondRun" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.103"/>
+  <testcase name="loginWallPrivateEmptyAndErrors" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.257"/>
+  <testcase name="snapshotLogsArePaged" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.051"/>
+  <testcase name="mirrorFallbackAndFailures" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.052"/>
+  <testcase name="startValidation" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.001"/>
+  <testcase name="pauseHoldsNewFilesUntilResume" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="6.961"/>
+  <testcase name="reportHasNoSecretsAndKeepsLogs" classname="io.github.avsessisozx.douyinindirici.EngineTest" time="0.055"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
