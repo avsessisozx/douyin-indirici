@@ -1,5 +1,7 @@
 # Douyin İndirici
 
+> ⬇️ **İndir:** [Windows (EXE)](https://github.com/avsessisozx/douyin-indirici/releases/latest/download/DouyinIndirici.exe) · [Android (APK)](https://github.com/avsessisozx/douyin-indirici/releases/latest)
+
 Douyin'deki (Çin TikTok'u) videoları ve resimleri indiren, Türkçe ve İngilizce arayüzlü **Windows programı** ve **Android uygulaması**. Douyin hesabı gerekmez.
 
 - **Tek gönderi:** bir videoyu ya da bir resim albümünü indirir.
